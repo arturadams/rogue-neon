@@ -1,0 +1,13 @@
+{
+  "name": "rogue-neon",
+  "version": "1.0.0",
+  "description": "Rogue Neon gameplay prototype",
+  "main": "index.js",
+  "scripts": {
+    "test": "bun test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
+}

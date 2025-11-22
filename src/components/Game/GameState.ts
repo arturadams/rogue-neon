@@ -32,11 +32,15 @@ type GameEventMap = {
 type GameEventKey = keyof GameEventMap;
 type Listener<K extends GameEventKey> = (payload: GameEventMap[K]) => void;
 
-function sampleArray<T>(source: T[], count: number): T[] {
+function sampleArray<T>(
+  source: T[],
+  count: number,
+  random: () => number = Math.random
+): T[] {
   const clone = [...source];
   const picks: T[] = [];
   while (picks.length < count && clone.length > 0) {
-    const idx = Math.floor(Math.random() * clone.length);
+    const idx = Math.floor(random() * clone.length);
     picks.push(clone.splice(idx, 1)[0]);
   }
   return picks;
@@ -69,9 +73,17 @@ export class GameState {
   private readonly maxWeaponSlots = basePlayer.maxWeapons;
   private readonly maxPassiveSlots = 4;
   private listeners: Partial<{ [K in GameEventKey]: Set<Listener<K>> }> = {};
+  private readonly random: () => number;
 
-  constructor() {
-    this.player = { ...basePlayer };
+  constructor(random: () => number = Math.random) {
+    this.random = random;
+    this.player = {
+      ...basePlayer,
+      activeSpells: [],
+      passives: [],
+      items: [],
+      banList: [],
+    };
     this.rollStarterChoices();
     this.emit("hud", this.getHudState());
   }
@@ -155,7 +167,12 @@ export class GameState {
   }
 
   setSpeed(multiplier: number): void {
-    this.speed = multiplier;
+    const sanitizedSpeed = Math.max(
+      0.25,
+      Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1
+    );
+    if (sanitizedSpeed === this.speed) return;
+    this.speed = sanitizedSpeed;
     this.emit("speed", this.speed);
     this.emit("hud", this.getHudState());
   }
@@ -167,10 +184,12 @@ export class GameState {
     const waveDuration = 20000; // 20 seconds per wave for demo
     this.progress += (deltaMs * this.speed) / waveDuration;
     if (this.progress >= 1) {
-      this.progress = 0;
       if (this.wave < this.maxWave) {
         this.wave += 1;
         this.player.gold += 5;
+        this.progress = 0;
+      } else {
+        this.progress = 1;
       }
     }
 
@@ -198,8 +217,8 @@ export class GameState {
   ): void {
     const item =
       (itemId && ITEMS.find((entry) => entry.id === itemId)) ||
-      this.rollItemFromWeights(rarityWeights) ||
-      sampleArray(ITEMS, 1)[0];
+        this.rollItemFromWeights(rarityWeights) ||
+        sampleArray(ITEMS, 1, this.random)[0];
     if (!item) return;
     this.player.items.push(item.id);
     this.emit("item", item);
@@ -217,13 +236,13 @@ export class GameState {
     if (!entries.length) return undefined;
 
     const totalWeight = entries.reduce((sum, [, weight]) => sum + (weight ?? 0), 0);
-    let roll = Math.random() * totalWeight;
+    let roll = this.random() * totalWeight;
 
     for (const [rarity, weight] of entries) {
       roll -= weight ?? 0;
       if (roll <= 0) {
         const options = ITEMS.filter((item) => item.rarity === rarity);
-        return sampleArray(options, 1)[0];
+        return sampleArray(options, 1, this.random)[0];
       }
     }
     return undefined;
@@ -271,13 +290,13 @@ export class GameState {
   }
 
   private rollStarterChoices(): void {
-    this.starterChoices = sampleArray(WEAPONS, 3);
+    this.starterChoices = sampleArray(WEAPONS, 3, this.random);
     this.emit("starter", this.starterChoices);
   }
 
   private rollLevelChoices(): void {
     const pool = this.buildLevelChoicePool();
-    this.levelChoices = sampleArray(pool, 3);
+    this.levelChoices = sampleArray(pool, 3, this.random);
     this.emit("levelUp", this.levelChoices);
   }
 
