@@ -18,31 +18,12 @@ import {
   updateFloatingText,
 } from "../Effects/FloatingText";
 import { GameState } from "./GameState";
+import { EnemyManager } from "./EnemyManager";
+import { WORLD_CONFIG, WorldConfig } from "./WorldConfig";
 
 export function setupWorld(gameState: GameState) {
   // --- CONFIG ---
-  const CONFIG = {
-    spawnZ: -120,
-    playerZ: 40,
-    endZone: 50,
-    laneWidth: 24,
-    maxWaves: 20,
-    colors: {
-      cyan: 0x00ffff,
-      pink: 0xff00ff,
-      orange: 0xffaa00,
-      red: 0xff0055,
-      bg: 0x050510,
-      green: 0x00ff00,
-      yellow: 0xffee00,
-      common: 0xdddddd,
-      uncommon: 0x00ff00,
-      rare: 0x0088ff,
-      mythic: 0xaa00ff,
-      legendary: 0xffaa00,
-      cursed: 0xff0000,
-    },
-  };
+  const CONFIG: WorldConfig = WORLD_CONFIG;
 
   // --- SCENE SETUP ---
   const scene = new THREE.Scene();
@@ -97,6 +78,8 @@ export function setupWorld(gameState: GameState) {
   const laneR = laneL.clone();
   laneR.position.set(CONFIG.laneWidth / 2 + 1, 0, -50);
   worldGroup.add(laneR);
+
+  const enemyManager = new EnemyManager(worldGroup, CONFIG, gameState);
 
   // --- PLAYER ---
   const charGroup = new THREE.Group();
@@ -158,6 +141,7 @@ export function setupWorld(gameState: GameState) {
     requestAnimationFrame(animate);
     gameState.tick(delta);
     updatePlayer();
+    enemyManager.update(delta);
     updateFloatingText(delta);
     updateScanline(now);
     updateVignetteCurse(curseOverlayEnabled);
