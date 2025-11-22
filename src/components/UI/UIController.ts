@@ -7,6 +7,9 @@ interface UIElements {
   statsPanel: HTMLElement | null;
   spellDock: HTMLElement | null;
   inventoryPanel: HTMLElement | null;
+  startScreen: HTMLElement | null;
+  startScreenStart: HTMLButtonElement | null;
+  startScreenDatabase: HTMLButtonElement | null;
   startBtn: HTMLButtonElement | null;
   pauseBtn: HTMLButtonElement | null;
   databaseBtn: HTMLButtonElement | null;
@@ -62,6 +65,9 @@ export class UIController {
     statsPanel: null,
     spellDock: null,
     inventoryPanel: null,
+    startScreen: null,
+    startScreenStart: null,
+    startScreenDatabase: null,
     startBtn: null,
     pauseBtn: null,
     databaseBtn: null,
@@ -100,7 +106,7 @@ export class UIController {
     this.renderLevelUpChoices(this.gameState.getLevelChoices());
     this.populateDatabase();
     this.updateHUD(this.gameState.getHudState());
-    this.showStarterModal();
+    this.showStartScreen();
   }
 
   private cacheElements(): void {
@@ -108,6 +114,13 @@ export class UIController {
       statsPanel: document.getElementById("stats-panel"),
       spellDock: document.getElementById("spell-dock"),
       inventoryPanel: document.getElementById("inventory-panel"),
+      startScreen: document.getElementById("start-screen"),
+      startScreenStart: document.getElementById(
+        "start-game-btn"
+      ) as HTMLButtonElement | null,
+      startScreenDatabase: document.getElementById(
+        "menu-database-btn"
+      ) as HTMLButtonElement | null,
       startBtn: document.getElementById("start-btn") as HTMLButtonElement | null,
       pauseBtn: document.getElementById("pause-btn") as HTMLButtonElement | null,
       databaseBtn: document.getElementById("database-btn") as HTMLButtonElement | null,
@@ -141,7 +154,7 @@ export class UIController {
   private bindControls(): void {
     this.ui.startBtn?.addEventListener("click", () => {
       if (!this.gameState.hasActiveWeapon()) {
-        this.showStarterModal();
+        this.showStartScreen();
         return;
       }
       this.showHudPanels();
@@ -151,6 +164,15 @@ export class UIController {
         this.gameState.startGame();
       }
       this.hideStarterModal();
+    });
+
+    this.ui.startScreenStart?.addEventListener("click", () => {
+      this.hideStartScreen();
+      this.showStarterModal();
+    });
+
+    this.ui.startScreenDatabase?.addEventListener("click", () => {
+      this.openDatabase();
     });
 
     this.ui.pauseBtn?.addEventListener("click", () => {
@@ -217,6 +239,7 @@ export class UIController {
         if (!id) return;
         this.gameState.selectStarterWeapon(id);
         this.showHudPanels();
+        this.hideStartScreen();
         this.hideStarterModal();
         this.gameState.startGame();
       });
@@ -262,6 +285,14 @@ export class UIController {
 
   private hideItemModal(): void {
     if (this.ui.itemModal) this.ui.itemModal.style.display = "none";
+  }
+
+  private showStartScreen(): void {
+    if (this.ui.startScreen) this.ui.startScreen.style.display = "block";
+  }
+
+  private hideStartScreen(): void {
+    if (this.ui.startScreen) this.ui.startScreen.style.display = "none";
   }
 
   private showStarterModal(): void {
