@@ -5,6 +5,7 @@ import { SpellDock } from "./components/UI/SpellDock";
 import { InventoryPanel } from "./components/UI/InventoryPanel";
 import { ControlsPanel } from "./components/UI/ControlsPanel";
 import { StarterModal } from "./components/UI/Modals/StarterModal";
+import { StartScreenModal } from "./components/UI/Modals/StartScreenModal";
 import { LevelUpModal } from "./components/UI/Modals/LevelUpModal";
 import { ItemModal } from "./components/UI/Modals/ItemModal";
 import { DatabaseModal } from "./components/UI/Modals/DatabaseModal";
@@ -21,6 +22,7 @@ if (uiLayer) {
     StatsPanel() +
     SpellDock() +
     InventoryPanel() +
+    StartScreenModal() +
     StarterModal() +
     LevelUpModal() +
     ItemModal() +

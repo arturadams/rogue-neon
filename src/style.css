@@ -333,6 +333,37 @@ canvas {
   overflow-y: auto;
 }
 
+.start-screen {
+  width: 480px;
+}
+
+.game-title {
+  margin: 0 0 10px;
+  font-size: 42px;
+  letter-spacing: 4px;
+  color: #00ffff;
+}
+
+.game-tagline {
+  margin: 0;
+  color: #bbb;
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+
+.menu-actions {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.secondary-btn {
+  background: transparent;
+  color: #00ffff;
+  border: 2px solid #00ffff;
+}
+
 .card-container {
   display: flex;
   gap: 15px;
