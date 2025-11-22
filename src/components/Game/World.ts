@@ -20,6 +20,7 @@ import {
 import { GameState } from "./GameState";
 import { EnemyManager } from "./EnemyManager";
 import { WORLD_CONFIG, WorldConfig } from "./WorldConfig";
+import { WeaponSystem } from "./WeaponSystem";
 
 export function setupWorld(gameState: GameState) {
   // --- CONFIG ---
@@ -79,8 +80,6 @@ export function setupWorld(gameState: GameState) {
   laneR.position.set(CONFIG.laneWidth / 2 + 1, 0, -50);
   worldGroup.add(laneR);
 
-  const enemyManager = new EnemyManager(worldGroup, CONFIG, gameState);
-
   // --- PLAYER ---
   const charGroup = new THREE.Group();
   charGroup.position.set(0, 0, CONFIG.playerZ);
@@ -92,6 +91,9 @@ export function setupWorld(gameState: GameState) {
   body.rotation.y = Math.PI / 4;
   charGroup.add(body);
   scene.add(charGroup);
+
+  const enemyManager = new EnemyManager(worldGroup, CONFIG, gameState);
+  const weaponSystem = new WeaponSystem(worldGroup, charGroup, gameState, CONFIG);
 
   // --- PLAYER CONTROLS ---
   const keys = { w: false, a: false, s: false, d: false };
@@ -142,6 +144,7 @@ export function setupWorld(gameState: GameState) {
     gameState.tick(delta);
     updatePlayer();
     enemyManager.update(delta);
+    weaponSystem.update(delta);
     updateFloatingText(delta);
     updateScanline(now);
     updateVignetteCurse(curseOverlayEnabled);
