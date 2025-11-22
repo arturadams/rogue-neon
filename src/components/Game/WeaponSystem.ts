@@ -7,10 +7,11 @@ import { WEAPONS } from "./Weapons";
 import { Weapon } from "../../types";
 
 type Projectile = {
-  mesh: THREE.Mesh;
+  object: THREE.Object3D;
   velocity: THREE.Vector3;
   life: number;
   followPlayer?: boolean;
+  direction?: THREE.Vector3;
 };
 
 type WeaponRuntime = {
@@ -27,6 +28,7 @@ export class WeaponSystem {
   private isRunning = false;
   private isPaused = false;
   private speedMult = 1;
+  private aimTarget = new THREE.Vector3(0, 0, -50);
 
   constructor(
     private readonly worldGroup: THREE.Group,
@@ -59,6 +61,10 @@ export class WeaponSystem {
 
     this.updateProjectiles(deltaMs);
     this.updateBeams(deltaMs);
+  }
+
+  updateAimTarget(target: THREE.Vector3): void {
+    this.aimTarget.copy(target);
   }
 
   private syncHud(hud: HudState): void {
@@ -106,12 +112,31 @@ export class WeaponSystem {
     index: number,
     total: number
   ): void {
-    const geometry = new THREE.SphereGeometry(0.75, 8, 8);
-    const material = new THREE.MeshBasicMaterial({
+    const coreGeometry = new THREE.CapsuleGeometry(0.35, 1.5, 6, 12);
+    const coreMaterial = new THREE.MeshStandardMaterial({
       color: weapon.color,
-      wireframe: true,
+      emissive: new THREE.Color(weapon.color),
+      emissiveIntensity: 2.5,
+      roughness: 0.2,
+      metalness: 0.35,
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
     });
-    const mesh = new THREE.Mesh(geometry, material);
+    const mesh = new THREE.Mesh(coreGeometry, coreMaterial);
+    mesh.castShadow = false;
+    mesh.receiveShadow = false;
+
+    const glowGeometry = new THREE.SphereGeometry(0.8, 10, 10);
+    const glowMaterial = new THREE.MeshBasicMaterial({
+      color: weapon.color,
+      transparent: true,
+      opacity: 0.3,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+    mesh.add(glow);
 
     const offsetX = spread
       ? (index - (total - 1) / 2) * spread * 2 + (Math.random() - 0.5) * spread
@@ -122,41 +147,57 @@ export class WeaponSystem {
       this.charGroup.position.z
     );
 
+    const direction = this.getAimDirection();
     const speed = (weapon.base.speed || 1) * 0.08;
-    const velocity = new THREE.Vector3(0, 0, -speed);
+    const velocity = direction.clone().multiplyScalar(speed);
     const life = weapon.base.range
-      ? weapon.base.range / Math.abs(velocity.z || 1)
+      ? weapon.base.range / Math.max(velocity.length(), 0.001)
       : 2000;
 
+    mesh.lookAt(mesh.position.clone().add(direction));
+
     this.worldGroup.add(mesh);
-    this.projectiles.push({ mesh, velocity, life });
+    this.projectiles.push({ object: mesh, velocity, life, direction });
   }
 
   private spawnBeam(weapon: Weapon): void {
     const length = weapon.base.range || 150;
     const width = weapon.base.width || 0.5;
-    const geometry = new THREE.BoxGeometry(width * 2, 0.5, length);
-    const material = new THREE.MeshBasicMaterial({
+    const geometry = new THREE.BoxGeometry(width * 2, 0.4, length);
+    const material = new THREE.MeshPhongMaterial({
       color: weapon.color,
+      emissive: new THREE.Color(weapon.color),
+      emissiveIntensity: 1.8,
       transparent: true,
-      opacity: 0.8,
+      opacity: 0.75,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      depthWrite: false,
     });
     const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(
-      this.charGroup.position.x,
-      2.5,
-      this.charGroup.position.z - length / 2
-    );
+    const direction = this.getAimDirection();
+    const beamCenter = new THREE.Vector3()
+      .copy(this.charGroup.position)
+      .add(direction.clone().multiplyScalar(length / 2));
+
+    mesh.position.set(beamCenter.x, 2.5, beamCenter.z);
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction.clone());
 
     this.worldGroup.add(mesh);
-    this.beams.push({ mesh, velocity: new THREE.Vector3(), life: 150, followPlayer: true });
+    this.beams.push({
+      object: mesh,
+      velocity: new THREE.Vector3(),
+      life: 150,
+      followPlayer: true,
+      direction,
+    });
   }
 
   private updateProjectiles(deltaMs: number): void {
     const delta = deltaMs * this.speedMult;
     this.projectiles.slice().forEach((projectile) => {
       projectile.life -= delta;
-      projectile.mesh.position.add(
+      projectile.object.position.add(
         projectile.velocity.clone().multiplyScalar(delta)
       );
 
@@ -169,7 +210,7 @@ export class WeaponSystem {
 
       if (
         projectile.life <= 0 ||
-        projectile.mesh.position.z < this.config.spawnZ - 50
+        projectile.object.position.z < this.config.spawnZ - 50
       ) {
         this.removeProjectile(projectile);
       }
@@ -181,12 +222,15 @@ export class WeaponSystem {
     this.beams.slice().forEach((beam) => {
       beam.life -= delta;
       if (beam.followPlayer) {
-        const length = (beam.mesh.geometry as THREE.BoxGeometry).parameters.depth;
-        beam.mesh.position.set(
-          this.charGroup.position.x,
-          2.5,
-          this.charGroup.position.z - length / 2
-        );
+        const length = ((beam.object as THREE.Mesh).geometry as THREE.BoxGeometry).parameters
+          .depth;
+        const direction = this.getAimDirection();
+        beam.direction = direction;
+        const beamCenter = new THREE.Vector3()
+          .copy(this.charGroup.position)
+          .add(direction.clone().multiplyScalar(length / 2));
+        beam.object.position.set(beamCenter.x, 2.5, beamCenter.z);
+        beam.object.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction);
       }
 
       this.enemyManager
@@ -204,39 +248,72 @@ export class WeaponSystem {
   private findProjectileHit(projectile: Projectile): Enemy | undefined {
     return this.enemyManager
       .getEnemies()
-      .find((enemy) =>
-        enemy.mesh.position.distanceTo(projectile.mesh.position) < 3.5
-      );
+      .find((enemy) => enemy.mesh.position.distanceTo(projectile.object.position) < 3.5);
   }
 
   private isEnemyInBeam(enemy: Enemy, beam: Projectile): boolean {
-    const geometry = beam.mesh.geometry as THREE.BoxGeometry;
+    if (!(beam.object instanceof THREE.Mesh)) return false;
+    const geometry = beam.object.geometry as THREE.BoxGeometry;
     const { width, depth } = geometry.parameters;
     const halfDepth = depth / 2;
+    const halfWidth = width;
 
-    const dx = Math.abs(enemy.mesh.position.x - beam.mesh.position.x);
-    const dz = enemy.mesh.position.z - beam.mesh.position.z;
+    const direction = (beam.direction || this.getAimDirection()).clone().normalize();
+    const toEnemy = new THREE.Vector3().subVectors(enemy.mesh.position, beam.object.position);
+    const along = toEnemy.dot(direction);
+    const perpendicular = toEnemy
+      .clone()
+      .sub(direction.clone().multiplyScalar(along));
+    const lateralDistance = Math.sqrt(perpendicular.x ** 2 + perpendicular.z ** 2);
 
-    return dx <= width && dz <= halfDepth + 1 && dz >= -halfDepth - 1;
+    return (
+      along <= halfDepth + 1 &&
+      along >= -halfDepth - 1 &&
+      lateralDistance <= halfWidth + 1.2
+    );
   }
 
   private removeProjectile(projectile: Projectile): void {
-    this.worldGroup.remove(projectile.mesh);
-    projectile.mesh.geometry.dispose();
-    const material = projectile.mesh.material as THREE.Material;
-    material.dispose();
+    this.worldGroup.remove(projectile.object);
+    this.disposeObject(projectile.object);
 
     const index = this.projectiles.indexOf(projectile);
     if (index >= 0) this.projectiles.splice(index, 1);
   }
 
   private removeBeam(beam: Projectile): void {
-    this.worldGroup.remove(beam.mesh);
-    beam.mesh.geometry.dispose();
-    const material = beam.mesh.material as THREE.Material;
-    material.dispose();
+    this.worldGroup.remove(beam.object);
+    this.disposeObject(beam.object);
 
     const index = this.beams.indexOf(beam);
     if (index >= 0) this.beams.splice(index, 1);
+  }
+
+  private getAimDirection(): THREE.Vector3 {
+    const direction = new THREE.Vector3(
+      this.aimTarget.x - this.charGroup.position.x,
+      0,
+      this.aimTarget.z - this.charGroup.position.z
+    );
+
+    if (direction.lengthSq() < 0.0001) {
+      direction.set(0, 0, -1);
+    }
+
+    return direction.normalize();
+  }
+
+  private disposeObject(object: THREE.Object3D): void {
+    object.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (mesh.geometry) {
+        mesh.geometry.dispose();
+      }
+      if (Array.isArray(mesh.material)) {
+        mesh.material.forEach((material) => material.dispose());
+      } else if (mesh.material) {
+        (mesh.material as THREE.Material).dispose();
+      }
+    });
   }
 }

@@ -47,6 +47,11 @@ export function setupWorld(gameState: GameState) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   document.getElementById("game-canvas")?.appendChild(renderer.domElement);
 
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const aimTarget = new THREE.Vector3(0, 0, CONFIG.playerZ - 30);
+
   const composer = new EffectComposer(renderer);
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
@@ -94,6 +99,33 @@ export function setupWorld(gameState: GameState) {
   charGroup.add(body);
   scene.add(charGroup);
 
+  const aimLineMaterial = new THREE.LineBasicMaterial({
+    color: CONFIG.colors.cyan,
+    transparent: true,
+    opacity: 0.4,
+    blending: THREE.AdditiveBlending,
+  });
+  const aimLineGeometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(),
+    new THREE.Vector3(),
+  ]);
+  const aimLine = new THREE.Line(aimLineGeometry, aimLineMaterial);
+  worldGroup.add(aimLine);
+
+  const targetGeometry = new THREE.RingGeometry(0.6, 1.1, 32);
+  const targetMaterial = new THREE.MeshBasicMaterial({
+    color: CONFIG.colors.cyan,
+    transparent: true,
+    opacity: 0.65,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  const targetMesh = new THREE.Mesh(targetGeometry, targetMaterial);
+  targetMesh.rotation.x = -Math.PI / 2;
+  targetMesh.position.set(aimTarget.x, 0.05, aimTarget.z);
+  worldGroup.add(targetMesh);
+
   const xpManager = new XpOrbManager(worldGroup, charGroup, gameState, CONFIG);
   const chestManager = new LootChestManager(
     worldGroup,
@@ -115,6 +147,22 @@ export function setupWorld(gameState: GameState) {
     CONFIG,
     enemyManager
   );
+
+  const gameCanvas = document.getElementById("game-canvas");
+  const updateAimFromPointer = (event: MouseEvent) => {
+    if (!gameCanvas) return;
+    const rect = renderer.domElement.getBoundingClientRect();
+    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointer, camera);
+    const hit = new THREE.Vector3();
+    if (raycaster.ray.intersectPlane(groundPlane, hit)) {
+      const clampedX = Math.min(Math.max(hit.x, -CONFIG.laneWidth * 1.5), CONFIG.laneWidth * 1.5);
+      const clampedZ = Math.min(Math.max(hit.z, -CONFIG.endZone - 40), CONFIG.endZone + 40);
+      aimTarget.set(clampedX, 0, clampedZ);
+    }
+  };
+  gameCanvas?.addEventListener("mousemove", updateAimFromPointer);
 
   // --- PLAYER CONTROLS ---
   const keys = { w: false, a: false, s: false, d: false };
@@ -173,6 +221,19 @@ export function setupWorld(gameState: GameState) {
     }
   }
 
+  function updateAimHelpers(now: number, delta: number) {
+    weaponSystem.updateAimTarget(aimTarget);
+    aimLine.geometry.setFromPoints([
+      new THREE.Vector3(charGroup.position.x, 2.5, charGroup.position.z),
+      new THREE.Vector3(aimTarget.x, 0.1, aimTarget.z),
+    ]);
+
+    targetMesh.position.set(aimTarget.x, 0.05, aimTarget.z);
+    const pulse = 1 + Math.sin(now * 0.008) * 0.08;
+    targetMesh.scale.setScalar(pulse);
+    targetMesh.rotation.z += delta * 0.002;
+  }
+
   // --- ANIMATION LOOP ---
   let lastTime = performance.now();
   function animate(now: number) {
@@ -183,6 +244,7 @@ export function setupWorld(gameState: GameState) {
     gameState.tick(delta);
     updatePlayer();
     enemyManager.update(delta);
+    updateAimHelpers(now, delta);
     weaponSystem.update(delta);
     xpManager.update(delta);
     chestManager.update(delta);
