@@ -60,6 +60,7 @@ export class GameState {
   private progress = 0;
   private isRunning = false;
   private isPaused = false;
+  private isModalPaused = false;
   private speed = 1;
   private starterChoices: Weapon[] = [];
   private levelChoices: LevelChoice[] = [];
@@ -103,7 +104,7 @@ export class GameState {
       progress: this.progress,
       rerolls: this.player.rerolls,
       isRunning: this.isRunning,
-      isPaused: this.isPaused,
+      isPaused: this.isEffectivelyPaused(),
       speed: this.speed,
     };
   }
@@ -127,14 +128,30 @@ export class GameState {
   startGame(): void {
     this.isRunning = true;
     this.isPaused = false;
-    this.emit("state", { isRunning: this.isRunning, isPaused: this.isPaused });
+    this.emit("state", {
+      isRunning: this.isRunning,
+      isPaused: this.isEffectivelyPaused(),
+    });
     this.emit("hud", this.getHudState());
   }
 
   togglePause(): void {
     if (!this.isRunning) return;
     this.isPaused = !this.isPaused;
-    this.emit("state", { isRunning: this.isRunning, isPaused: this.isPaused });
+    this.emit("state", {
+      isRunning: this.isRunning,
+      isPaused: this.isEffectivelyPaused(),
+    });
+    this.emit("hud", this.getHudState());
+  }
+
+  setModalPause(isPaused: boolean): void {
+    this.isModalPaused = isPaused;
+    this.emit("state", {
+      isRunning: this.isRunning,
+      isPaused: this.isEffectivelyPaused(),
+    });
+    this.emit("hud", this.getHudState());
   }
 
   setSpeed(multiplier: number): void {
@@ -144,7 +161,7 @@ export class GameState {
   }
 
   tick(deltaMs: number): void {
-    if (!this.isRunning || this.isPaused) return;
+    if (!this.isRunning || this.isEffectivelyPaused()) return;
 
     // Progress wave timer
     const waveDuration = 20000; // 20 seconds per wave for demo
@@ -341,5 +358,9 @@ export class GameState {
       this.player.maxXp = Math.round(this.player.maxXp * 1.2);
       this.rollLevelChoices();
     }
+  }
+
+  private isEffectivelyPaused(): boolean {
+    return this.isPaused || this.isModalPaused;
   }
 }
