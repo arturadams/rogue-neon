@@ -64,10 +64,10 @@ export const ITEMS = [
   },
   {
     id: "i_10",
-    name: "LED Strip",
+    name: "Data Uplink",
     rarity: "common",
-    icon: "💡",
-    effect: "Projectiles glow (Light radius)",
+    icon: "📡",
+    effect: "+15% XP Gain",
   },
   {
     id: "i_11",
@@ -225,10 +225,10 @@ export const ITEMS = [
   },
   {
     id: "i_33",
-    name: "Black Hole",
+    name: "Chrono Loop",
     rarity: "legendary",
-    icon: "⚫",
-    effect: "Boss death sucks all XP to player",
+    icon: "⏳",
+    effect: "Every 10s instantly refreshes all cooldowns",
   },
   {
     id: "i_34",
@@ -260,10 +260,10 @@ export const ITEMS = [
   },
   {
     id: "i_38",
-    name: "Pacifist Chip",
+    name: "Blood Debt",
     rarity: "cursed",
-    icon: "☮️",
-    effect: "You deal 0 dmg. Pets deal 1000% dmg.",
+    icon: "🩸",
+    effect: "Lose 1 HP/sec but deal +100% damage",
   },
   {
     id: "i_39",
@@ -277,6 +277,6 @@ export const ITEMS = [
     name: "Glitch God",
     rarity: "cursed",
     icon: "👾",
-    effect: "Randomize all weapons every 10s",
+    effect: "Adds a 5th unstable weapon that changes every 10s; level = ceil(avg of your weapons). Not upgradable.",
   },
 ];
