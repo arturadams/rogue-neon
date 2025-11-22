@@ -3,10 +3,35 @@ import * as THREE from "three";
 import { HudState, GameState } from "./GameState";
 import { WorldConfig } from "./WorldConfig";
 import { XpOrbManager } from "./XpOrbManager";
+import { LootChestManager, LootRarityWeights } from "./LootChestManager";
+
+type EnemyKind = "grunt" | "miniboss" | "boss";
+
+type DropProfile = {
+  chance: number;
+  rarityWeights: LootRarityWeights;
+};
+
+const DROP_PROFILES: Record<EnemyKind, DropProfile> = {
+  grunt: {
+    chance: 0.12,
+    rarityWeights: { common: 0.7, uncommon: 0.25, rare: 0.05 },
+  },
+  miniboss: {
+    chance: 0.55,
+    rarityWeights: { uncommon: 0.45, rare: 0.35, mythic: 0.2 },
+  },
+  boss: {
+    chance: 0.85,
+    rarityWeights: { rare: 0.4, mythic: 0.35, legendary: 0.2, cursed: 0.05 },
+  },
+};
 
 export type Enemy = {
   mesh: THREE.Mesh;
   speed: number;
+  kind: EnemyKind;
+  dropProfile: DropProfile;
 };
 
 export class EnemyManager {
@@ -21,7 +46,8 @@ export class EnemyManager {
     private readonly worldGroup: THREE.Group,
     private readonly config: WorldConfig,
     private readonly gameState: GameState,
-    private readonly xpOrbs: XpOrbManager
+    private readonly xpOrbs: XpOrbManager,
+    private readonly chests: LootChestManager
   ) {
     this.gameState.on("hud", (hud) => this.syncHud(hud));
     this.gameState.on("state", ({ isRunning, isPaused }) => {
@@ -47,10 +73,11 @@ export class EnemyManager {
       this.config.laneWidth / 2,
     ];
     const lane = laneOffsets[Math.floor(Math.random() * laneOffsets.length)];
-    const geometry = new THREE.DodecahedronGeometry(3, 0);
+    const kind = this.pickEnemyKind();
+    const geometry = new THREE.DodecahedronGeometry(this.getEnemySize(kind), 0);
     const material = new THREE.MeshStandardMaterial({
-      color: this.getWaveColor(),
-      emissive: new THREE.Color(this.getWaveColor()),
+      color: this.getWaveColor(kind),
+      emissive: new THREE.Color(this.getWaveColor(kind)),
       emissiveIntensity: 0.4,
       wireframe: true,
     });
@@ -61,7 +88,12 @@ export class EnemyManager {
     this.worldGroup.add(mesh);
 
     const speed = 0.02 + this.currentWave * 0.0025;
-    this.enemies.push({ mesh, speed });
+    this.enemies.push({
+      mesh,
+      speed,
+      kind,
+      dropProfile: DROP_PROFILES[kind],
+    });
   }
 
   getEnemies(): Enemy[] {
@@ -78,9 +110,13 @@ export class EnemyManager {
 
     const xpValue = 8 + Math.floor(this.currentWave * 1.5);
     this.xpOrbs.spawnOrb(dropPosition, xpValue);
+
+    if (Math.random() <= enemy.dropProfile.chance) {
+      this.chests.spawnChest(dropPosition, enemy.dropProfile.rarityWeights);
+    }
   }
 
-  private getWaveColor(): number {
+  private getWaveColor(kind: EnemyKind): number {
     const waveColors = [
       this.config.colors.common,
       this.config.colors.uncommon,
@@ -89,11 +125,28 @@ export class EnemyManager {
       this.config.colors.legendary,
       this.config.colors.cursed,
     ];
+    if (kind === "miniboss") return this.config.colors.rare;
+    if (kind === "boss") return this.config.colors.legendary;
     const tier = Math.min(
       waveColors.length - 1,
       Math.floor((this.currentWave - 1) / 3)
     );
     return waveColors[tier];
+  }
+
+  private getEnemySize(kind: EnemyKind): number {
+    if (kind === "boss") return 6;
+    if (kind === "miniboss") return 4;
+    return 3;
+  }
+
+  private pickEnemyKind(): EnemyKind {
+    const bossWave = this.currentWave % 10 === 0;
+    const bossChance = bossWave ? 0.2 : 0.05;
+    if (Math.random() < bossChance) return "boss";
+
+    const miniChance = Math.min(0.05 + this.currentWave * 0.01, 0.4);
+    return Math.random() < miniChance ? "miniboss" : "grunt";
   }
 
   update(deltaMs: number): void {

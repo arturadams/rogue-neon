@@ -159,14 +159,41 @@ export class GameState {
     this.emit("hud", this.getHudState());
   }
 
-  pickupItem(itemId?: string): void {
+  pickupItem(
+    itemId?: string,
+    rarityWeights?: Partial<Record<Item["rarity"], number>>
+  ): void {
     const item =
       (itemId && ITEMS.find((entry) => entry.id === itemId)) ||
+      this.rollItemFromWeights(rarityWeights) ||
       sampleArray(ITEMS, 1)[0];
     if (!item) return;
     this.player.items.push(item.id);
     this.emit("item", item);
     this.emit("hud", this.getHudState());
+  }
+
+  private rollItemFromWeights(
+    rarityWeights?: Partial<Record<Item["rarity"], number>>
+  ): Item | undefined {
+    if (!rarityWeights) return undefined;
+    const entries = Object.entries(rarityWeights).filter(([rarity, weight]) => {
+      const weightValue = weight ?? 0;
+      return weightValue > 0 && ITEMS.some((item) => item.rarity === rarity);
+    });
+    if (!entries.length) return undefined;
+
+    const totalWeight = entries.reduce((sum, [, weight]) => sum + (weight ?? 0), 0);
+    let roll = Math.random() * totalWeight;
+
+    for (const [rarity, weight] of entries) {
+      roll -= weight ?? 0;
+      if (roll <= 0) {
+        const options = ITEMS.filter((item) => item.rarity === rarity);
+        return sampleArray(options, 1)[0];
+      }
+    }
+    return undefined;
   }
 
   selectStarterWeapon(weaponId: string): void {

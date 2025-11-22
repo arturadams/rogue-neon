@@ -22,6 +22,7 @@ import { EnemyManager } from "./EnemyManager";
 import { WORLD_CONFIG, WorldConfig } from "./WorldConfig";
 import { WeaponSystem } from "./WeaponSystem";
 import { XpOrbManager } from "./XpOrbManager";
+import { LootChestManager } from "./LootChestManager";
 
 export function setupWorld(gameState: GameState) {
   // --- CONFIG ---
@@ -94,11 +95,18 @@ export function setupWorld(gameState: GameState) {
   scene.add(charGroup);
 
   const xpManager = new XpOrbManager(worldGroup, charGroup, gameState, CONFIG);
+  const chestManager = new LootChestManager(
+    worldGroup,
+    charGroup,
+    gameState,
+    CONFIG
+  );
   const enemyManager = new EnemyManager(
     worldGroup,
     CONFIG,
     gameState,
-    xpManager
+    xpManager,
+    chestManager
   );
   const weaponSystem = new WeaponSystem(
     worldGroup,
@@ -159,6 +167,7 @@ export function setupWorld(gameState: GameState) {
     enemyManager.update(delta);
     weaponSystem.update(delta);
     xpManager.update(delta);
+    chestManager.update(delta);
     updateFloatingText(delta);
     updateScanline(now);
     updateVignetteCurse(curseOverlayEnabled);
