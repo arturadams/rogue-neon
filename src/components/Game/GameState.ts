@@ -141,8 +141,6 @@ export class GameState {
       }
     }
 
-    // Auto-gain a trickle of XP while running
-    this.gainXp((deltaMs / 1000) * 5 * this.speed);
     this.emit("hud", this.getHudState());
   }
 
@@ -205,6 +203,15 @@ export class GameState {
     const pool = available.length >= 3 ? available : WEAPONS;
     this.levelChoices = sampleArray(pool, 3);
     this.emit("levelUp", this.levelChoices);
+  }
+
+  collectXp(amount: number): void {
+    this.gainXp(amount);
+    this.emit("hud", this.getHudState());
+  }
+
+  getMagnetRadius(): number {
+    return this.player.magnetRadius;
   }
 
   private gainXp(amount: number): void {

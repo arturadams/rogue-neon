@@ -1,6 +1,7 @@
 import * as THREE from "three";
 
 import { GameState, HudState } from "./GameState";
+import { EnemyManager, Enemy } from "./EnemyManager";
 import { WorldConfig } from "./WorldConfig";
 import { WEAPONS } from "./Weapons";
 import { Weapon } from "../../types";
@@ -31,7 +32,8 @@ export class WeaponSystem {
     private readonly worldGroup: THREE.Group,
     private readonly charGroup: THREE.Group,
     private readonly gameState: GameState,
-    private readonly config: WorldConfig
+    private readonly config: WorldConfig,
+    private readonly enemyManager: EnemyManager
   ) {
     this.gameState.on("hud", (hud) => this.syncHud(hud));
     this.gameState.on("state", ({ isRunning, isPaused }) => {
@@ -158,6 +160,13 @@ export class WeaponSystem {
         projectile.velocity.clone().multiplyScalar(delta)
       );
 
+      const hitEnemy = this.findProjectileHit(projectile);
+      if (hitEnemy) {
+        this.enemyManager.defeatEnemy(hitEnemy);
+        this.removeProjectile(projectile);
+        return;
+      }
+
       if (
         projectile.life <= 0 ||
         projectile.mesh.position.z < this.config.spawnZ - 50
@@ -180,10 +189,35 @@ export class WeaponSystem {
         );
       }
 
+      this.enemyManager
+        .getEnemies()
+        .slice()
+        .filter((enemy) => this.isEnemyInBeam(enemy, beam))
+        .forEach((enemy) => this.enemyManager.defeatEnemy(enemy));
+
       if (beam.life <= 0) {
         this.removeBeam(beam);
       }
     });
+  }
+
+  private findProjectileHit(projectile: Projectile): Enemy | undefined {
+    return this.enemyManager
+      .getEnemies()
+      .find((enemy) =>
+        enemy.mesh.position.distanceTo(projectile.mesh.position) < 3.5
+      );
+  }
+
+  private isEnemyInBeam(enemy: Enemy, beam: Projectile): boolean {
+    const geometry = beam.mesh.geometry as THREE.BoxGeometry;
+    const { width, depth } = geometry.parameters;
+    const halfDepth = depth / 2;
+
+    const dx = Math.abs(enemy.mesh.position.x - beam.mesh.position.x);
+    const dz = enemy.mesh.position.z - beam.mesh.position.z;
+
+    return dx <= width && dz <= halfDepth + 1 && dz >= -halfDepth - 1;
   }
 
   private removeProjectile(projectile: Projectile): void {
