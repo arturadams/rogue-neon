@@ -65,6 +65,11 @@ canvas {
   transition: width 0.5s;
 }
 
+#progress-fill.paused {
+  background: #555;
+  transition: none;
+}
+
 .boss-marker {
   position: absolute;
   top: -5px;

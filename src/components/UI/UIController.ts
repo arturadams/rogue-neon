@@ -35,6 +35,7 @@ interface UIElements {
   maxWaveText: HTMLElement | null;
   goldText: HTMLElement | null;
   progressFill: HTMLElement | null;
+  progressLabel: HTMLElement | null;
   speedButtons: NodeListOf<HTMLButtonElement> | null;
 }
 
@@ -147,6 +148,7 @@ export class UIController {
       maxWaveText: document.getElementById("max-wave-text"),
       goldText: document.getElementById("gold-text"),
       progressFill: document.getElementById("progress-fill"),
+      progressLabel: document.getElementById("progress-label"),
       speedButtons: document.querySelectorAll<HTMLButtonElement>("#speed-controls .speed-btn"),
     };
   }
@@ -250,9 +252,11 @@ export class UIController {
     if (!this.ui.upgradeCards || !this.ui.levelUpModal) return;
     if (!choices.length) {
       this.ui.levelUpModal.style.display = "none";
+      this.gameState.setModalPause(false);
       return;
     }
 
+    this.gameState.setModalPause(true);
     this.ui.upgradeCards.innerHTML = choices
       .map((choice) => createLevelCardMarkup(choice))
       .join("");
@@ -264,6 +268,7 @@ export class UIController {
         if (!id || !kind) return;
         this.gameState.chooseLevelUp(id, kind);
         this.ui.levelUpModal!.style.display = "none";
+        this.gameState.setModalPause(false);
       });
     });
 
@@ -281,10 +286,12 @@ export class UIController {
     if (this.ui.itemRarity)
       this.ui.itemRarity.textContent = item.rarity.toUpperCase();
     this.ui.itemModal.style.display = "block";
+    this.gameState.setModalPause(true);
   }
 
   private hideItemModal(): void {
     if (this.ui.itemModal) this.ui.itemModal.style.display = "none";
+    this.gameState.setModalPause(false);
   }
 
   private showStartScreen(): void {
@@ -353,8 +360,16 @@ export class UIController {
     if (this.ui.goldText) this.ui.goldText.textContent = `${hud.gold}`;
     if (this.ui.waveText) this.ui.waveText.textContent = `${hud.wave}`;
     if (this.ui.maxWaveText) this.ui.maxWaveText.textContent = `${hud.maxWave}`;
-    if (this.ui.progressFill)
-      (this.ui.progressFill as HTMLElement).style.width = `${Math.min(100, hud.progress * 100)}%`;
+    if (this.ui.progressFill) {
+      const progressFill = this.ui.progressFill as HTMLElement;
+      progressFill.style.width = `${Math.min(100, hud.progress * 100)}%`;
+      progressFill.classList.toggle("paused", hud.isPaused);
+    }
+    if (this.ui.progressLabel) {
+      this.ui.progressLabel.textContent = hud.isPaused
+        ? "SYSTEM INTEGRITY PROTOCOL (PAUSED)"
+        : "SYSTEM INTEGRITY PROTOCOL";
+    }
 
     if (this.ui.rerollBtn) {
       this.ui.rerollBtn.textContent = `REROLL (${hud.rerolls})`;
