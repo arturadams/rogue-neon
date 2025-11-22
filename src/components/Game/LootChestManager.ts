@@ -20,6 +20,7 @@ export class LootChestManager {
   private isRunning = false;
   private isPaused = false;
   private speedMult = 1;
+  private readonly pullVector = new THREE.Vector3();
 
   constructor(
     private readonly worldGroup: THREE.Group,
@@ -73,7 +74,17 @@ export class LootChestManager {
       const distanceToPlayer = chest.mesh.position.distanceTo(
         this.charGroup.position
       );
-      if (distanceToPlayer <= Math.max(4, this.gameState.getMagnetRadius())) {
+      const magnetRadius = Math.max(4, this.gameState.getMagnetRadius());
+
+      if (distanceToPlayer > magnetRadius) {
+        this.pullVector
+          .subVectors(this.charGroup.position, chest.mesh.position)
+          .normalize()
+          .multiplyScalar(0.02 * delta);
+        chest.mesh.position.add(this.pullVector);
+      }
+
+      if (distanceToPlayer <= magnetRadius) {
         this.openChest(chest);
       }
     });

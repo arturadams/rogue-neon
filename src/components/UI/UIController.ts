@@ -96,12 +96,15 @@ export class UIController {
     progressFill: null,
     speedButtons: null,
   };
+  private levelSelectionIndex = 0;
+  private isLevelUpOpen = false;
 
   constructor(private gameState: GameState) {}
 
   initialize(): void {
     this.cacheElements();
     this.bindControls();
+    this.bindUpgradeNavigation();
     this.bindGameEvents();
     this.renderStarterChoices(this.gameState.getStarterChoices());
     this.renderLevelUpChoices(this.gameState.getLevelChoices());
@@ -206,6 +209,27 @@ export class UIController {
     });
   }
 
+  private bindUpgradeNavigation(): void {
+    window.addEventListener("keydown", (event) => {
+      if (!this.isLevelUpOpen || !this.ui.levelUpModal) return;
+
+      if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+        event.preventDefault();
+        this.moveUpgradeSelection(-1);
+      }
+
+      if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+        event.preventDefault();
+        this.moveUpgradeSelection(1);
+      }
+
+      if (event.key === " ") {
+        event.preventDefault();
+        this.activateSelectedUpgrade();
+      }
+    });
+  }
+
   private bindGameEvents(): void {
     this.gameState.on("hud", (hud) => this.updateHUD(hud));
     this.gameState.on("starter", (choices) => this.renderStarterChoices(choices));
@@ -252,25 +276,34 @@ export class UIController {
     if (!this.ui.upgradeCards || !this.ui.levelUpModal) return;
     if (!choices.length) {
       this.ui.levelUpModal.style.display = "none";
+      this.isLevelUpOpen = false;
+      this.levelSelectionIndex = 0;
       this.gameState.setModalPause(false);
       return;
     }
 
     this.gameState.setModalPause(true);
+    this.isLevelUpOpen = true;
     this.ui.upgradeCards.innerHTML = choices
       .map((choice) => createLevelCardMarkup(choice))
       .join("");
+    this.levelSelectionIndex = 0;
     this.ui.levelUpModal.style.display = "block";
     this.ui.upgradeCards.querySelectorAll<HTMLElement>(".upgrade-card").forEach((card) => {
+      card.tabIndex = -1;
       card.addEventListener("click", () => {
         const id = card.dataset.id;
         const kind = card.dataset.kind as LevelChoice["kind"] | undefined;
         if (!id || !kind) return;
+        this.levelSelectionIndex = this.getUpgradeCards().indexOf(card);
         this.gameState.chooseLevelUp(id, kind);
         this.ui.levelUpModal!.style.display = "none";
         this.gameState.setModalPause(false);
+        this.isLevelUpOpen = false;
       });
     });
+
+    this.highlightUpgradeSelection();
 
     if (this.ui.rerollBtn) {
       this.ui.rerollBtn.textContent = `REROLL (${this.gameState.getHudState().rerolls})`;
@@ -347,6 +380,40 @@ export class UIController {
     `;
 
     this.ui.databaseContent.innerHTML = weaponSection + itemSection;
+  }
+
+  private getUpgradeCards(): HTMLElement[] {
+    return Array.from(
+      this.ui.upgradeCards?.querySelectorAll<HTMLElement>(".upgrade-card") ?? []
+    );
+  }
+
+  private moveUpgradeSelection(offset: number): void {
+    const cards = this.getUpgradeCards();
+    if (!cards.length) return;
+
+    this.levelSelectionIndex =
+      (this.levelSelectionIndex + offset + cards.length) % cards.length;
+    this.highlightUpgradeSelection(cards);
+  }
+
+  private highlightUpgradeSelection(cards = this.getUpgradeCards()): void {
+    cards.forEach((card, index) => {
+      card.classList.toggle("selected", index === this.levelSelectionIndex);
+    });
+    cards[this.levelSelectionIndex]?.focus();
+  }
+
+  private activateSelectedUpgrade(): void {
+    const selected = this.getUpgradeCards()[this.levelSelectionIndex];
+    const id = selected?.dataset.id;
+    const kind = selected?.dataset.kind as LevelChoice["kind"] | undefined;
+    if (!id || !kind) return;
+
+    this.gameState.chooseLevelUp(id, kind);
+    if (this.ui.levelUpModal) this.ui.levelUpModal.style.display = "none";
+    this.gameState.setModalPause(false);
+    this.isLevelUpOpen = false;
   }
 
   updateHUD(hud: HudState): void {
