@@ -2,6 +2,7 @@ import * as THREE from "three";
 
 import { HudState, GameState } from "./GameState";
 import { WorldConfig } from "./WorldConfig";
+import { XpOrbManager } from "./XpOrbManager";
 
 export type Enemy = {
   mesh: THREE.Mesh;
@@ -19,7 +20,8 @@ export class EnemyManager {
   constructor(
     private readonly worldGroup: THREE.Group,
     private readonly config: WorldConfig,
-    private readonly gameState: GameState
+    private readonly gameState: GameState,
+    private readonly xpOrbs: XpOrbManager
   ) {
     this.gameState.on("hud", (hud) => this.syncHud(hud));
     this.gameState.on("state", ({ isRunning, isPaused }) => {
@@ -60,6 +62,22 @@ export class EnemyManager {
 
     const speed = 0.02 + this.currentWave * 0.0025;
     this.enemies.push({ mesh, speed });
+  }
+
+  getEnemies(): Enemy[] {
+    return this.enemies;
+  }
+
+  defeatEnemy(enemy: Enemy): void {
+    const index = this.enemies.indexOf(enemy);
+    if (index < 0) return;
+
+    const dropPosition = enemy.mesh.position.clone();
+    this.cleanupEnemy(enemy);
+    this.enemies.splice(index, 1);
+
+    const xpValue = 8 + Math.floor(this.currentWave * 1.5);
+    this.xpOrbs.spawnOrb(dropPosition, xpValue);
   }
 
   private getWaveColor(): number {
