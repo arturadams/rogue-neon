@@ -7,6 +7,16 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass";
 // @ts-ignore
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass";
+import { initScanline, updateScanline } from "../Effects/Scanline";
+import {
+  initVignetteCurse,
+  updateVignetteCurse,
+} from "../Effects/VignetteCurse";
+import {
+  initFloatingText,
+  spawnFloatingText,
+  updateFloatingText,
+} from "../Effects/FloatingText";
 
 export function setupWorld() {
   // --- CONFIG ---
@@ -66,6 +76,11 @@ export function setupWorld() {
   composer.addPass(bloomPass);
   composer.addPass(new OutputPass());
 
+  // --- FX OVERLAYS & TEXT ---
+  initScanline();
+  initVignetteCurse();
+  initFloatingText(camera);
+
   // --- WORLD ---
   const worldGroup = new THREE.Group();
   scene.add(worldGroup);
@@ -96,17 +111,31 @@ export function setupWorld() {
 
   // --- PLAYER CONTROLS ---
   const keys = { w: false, a: false, s: false, d: false };
+  let curseOverlayEnabled = false;
   window.addEventListener("keydown", (e) => {
     if (e.key === "w") keys.w = true;
     if (e.key === "a") keys.a = true;
     if (e.key === "s") keys.s = true;
     if (e.key === "d") keys.d = true;
+    if (e.key.toLowerCase() === "c") {
+      curseOverlayEnabled = !curseOverlayEnabled;
+      updateVignetteCurse(curseOverlayEnabled);
+    }
   });
   window.addEventListener("keyup", (e) => {
     if (e.key === "w") keys.w = false;
     if (e.key === "a") keys.a = false;
     if (e.key === "s") keys.s = false;
     if (e.key === "d") keys.d = false;
+  });
+
+  window.addEventListener("click", () => {
+    spawnFloatingText(
+      `${Math.floor(Math.random() * 20) + 5}`,
+      charGroup.position,
+      CONFIG.colors.cyan,
+      Math.random() > 0.7
+    );
   });
 
   // --- ENTITY MANAGEMENT ---
@@ -127,13 +156,20 @@ export function setupWorld() {
   }
 
   // --- ANIMATION LOOP ---
-  function animate() {
+  let lastTime = performance.now();
+  function animate(now: number) {
+    const delta = now - lastTime;
+    lastTime = now;
+
     requestAnimationFrame(animate);
     updatePlayer();
     updateHUD();
+    updateFloatingText(delta);
+    updateScanline(now);
+    updateVignetteCurse(curseOverlayEnabled);
     composer.render();
   }
-  animate();
+  animate(lastTime);
 
   // Return objects for further use
   return { scene, camera, renderer, composer, worldGroup, charGroup };
