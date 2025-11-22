@@ -119,6 +119,7 @@ export function setupWorld(gameState: GameState) {
   // --- PLAYER CONTROLS ---
   const keys = { w: false, a: false, s: false, d: false };
   let curseOverlayEnabled = false;
+  let lastCollisionFeedback = 0;
   window.addEventListener("keydown", (e) => {
     if (e.key === "w") keys.w = true;
     if (e.key === "a") keys.a = true;
@@ -153,6 +154,23 @@ export function setupWorld(gameState: GameState) {
     if (keys.s) charGroup.position.z += speed;
     if (keys.a) charGroup.position.x -= speed;
     if (keys.d) charGroup.position.x += speed;
+
+    const halfLane = CONFIG.laneWidth / 2;
+    const clampedX = Math.min(Math.max(charGroup.position.x, -halfLane), halfLane);
+    const clampedZ = Math.min(
+      Math.max(charGroup.position.z, -CONFIG.endZone),
+      CONFIG.endZone
+    );
+    const collided = clampedX !== charGroup.position.x || clampedZ !== charGroup.position.z;
+
+    charGroup.position.x = clampedX;
+    charGroup.position.z = clampedZ;
+
+    const now = performance.now();
+    if (collided && now - lastCollisionFeedback > 200) {
+      lastCollisionFeedback = now;
+      spawnFloatingText("CLANG", charGroup.position, CONFIG.colors.red, false, 400);
+    }
   }
 
   // --- ANIMATION LOOP ---
