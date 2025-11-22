@@ -1,3 +1,4 @@
+import "./style.css";
 import { ProgressBar } from "./components/UI/ProgressBar";
 import { StatsPanel } from "./components/UI/StatsPanel";
 import { SpellDock } from "./components/UI/SpellDock";
