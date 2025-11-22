@@ -1,0 +1,260 @@
+export const SYNERGIES = [
+  {
+    weapon_id: "w_01",
+    choices: [
+      { path: "A", name: "Dual Wield", desc: "2x Fire Rate", max: "Gun Kata" },
+      { path: "B", name: "Sniper Mod", desc: "High Dmg, Slow", max: "Railgun" },
+    ],
+  },
+  {
+    weapon_id: "w_02",
+    choices: [
+      { path: "A", name: "Auto-Shotty", desc: "Full Auto", max: "Drum Mag" },
+      { path: "B", name: "Dragon's Breath", desc: "Fire Dmg", max: "Inferno" },
+    ],
+  },
+  {
+    weapon_id: "w_03",
+    choices: [
+      { path: "A", name: "Rail Driver", desc: "Giant Nails", max: "Impale" },
+      {
+        path: "B",
+        name: "Nail Bomb",
+        desc: "Exploding Nails",
+        max: "Cluster Nails",
+      },
+    ],
+  },
+  {
+    weapon_id: "w_04",
+    choices: [
+      {
+        path: "A",
+        name: "Siege Mode",
+        desc: "Stationary Buff",
+        max: "Fortress",
+      },
+      { path: "B", name: "Ricochet", desc: "Bouncing Bolts", max: "Pinball" },
+    ],
+  },
+  {
+    weapon_id: "w_05",
+    choices: [
+      { path: "A", name: "Boomerang", desc: "Returns", max: "Juggler" },
+      { path: "B", name: "Ground Saw", desc: "Floor Trap", max: "Earthquake" },
+    ],
+  },
+  {
+    weapon_id: "w_06",
+    choices: [
+      {
+        path: "A",
+        name: "Swarm Missiles",
+        desc: "Slow Homing",
+        max: "Hive Mind",
+      },
+      {
+        path: "B",
+        name: "Orbital Laser",
+        desc: "Sat Strike",
+        max: "Glassing Beam",
+      },
+    ],
+  },
+  {
+    weapon_id: "w_07",
+    choices: [
+      { path: "A", name: "Disco Mode", desc: "4 Rotating Lasers", max: "Rave" },
+      {
+        path: "B",
+        name: "Death Star",
+        desc: "Massive Blast",
+        max: "Planet Cracker",
+      },
+    ],
+  },
+  {
+    weapon_id: "w_08",
+    choices: [
+      {
+        path: "A",
+        name: "Thunderstorm",
+        desc: "Global Strikes",
+        max: "Zeus Wrath",
+      },
+      { path: "B", name: "Static Field", desc: "Aura Dmg", max: "EMP" },
+    ],
+  },
+  {
+    weapon_id: "w_09",
+    choices: [
+      {
+        path: "A",
+        name: "Bouncing Slime",
+        desc: "Bounces",
+        max: "Living Slime",
+      },
+      { path: "B", name: "Gas Cloud", desc: "AoE Cloud", max: "Combustion" },
+    ],
+  },
+  {
+    weapon_id: "w_10",
+    choices: [
+      { path: "A", name: "Mirror Room", desc: "2 Prisms", max: "Laser Grid" },
+      { path: "B", name: "Prism Bomb", desc: "Explodes", max: "Black Diamond" },
+    ],
+  },
+  {
+    weapon_id: "w_11",
+    choices: [
+      {
+        path: "A",
+        name: "Focused Beam",
+        desc: "Infinite Range",
+        max: "Cancer",
+      },
+      { path: "B", name: "Gamma Pulse", desc: "Radial Wave", max: "Fallout" },
+    ],
+  },
+  {
+    weapon_id: "w_12",
+    choices: [
+      { path: "A", name: "Life Drain", desc: "Heals Player", max: "Soul Jar" },
+      {
+        path: "B",
+        name: "Dimensional Rift",
+        desc: "Teleports Enemies",
+        max: "Banished",
+      },
+    ],
+  },
+  {
+    weapon_id: "w_13",
+    choices: [
+      { path: "A", name: "Carpet Bomber", desc: "Rain Rockets", max: "Nuke" },
+      {
+        path: "B",
+        name: "Bunker Buster",
+        desc: "Heavy Drill",
+        max: "Seismic Charge",
+      },
+    ],
+  },
+  {
+    weapon_id: "w_14",
+    choices: [
+      { path: "A", name: "White Hole", desc: "Pushback", max: "Shockwave" },
+      {
+        path: "B",
+        name: "Orbit",
+        desc: "Capture Enemies",
+        max: "Accretion Disk",
+      },
+    ],
+  },
+  {
+    weapon_id: "w_15",
+    choices: [
+      {
+        path: "A",
+        name: "Spider Mines",
+        desc: "Chase Enemies",
+        max: "Widowmaker",
+      },
+      {
+        path: "B",
+        name: "Claymore",
+        desc: "Cone Blast",
+        max: "Front Towards Enemy",
+      },
+    ],
+  },
+  {
+    weapon_id: "w_16",
+    choices: [
+      { path: "A", name: "Air Defense", desc: "Anti-Air", max: "No Fly Zone" },
+      { path: "B", name: "Confetti", desc: "High Stun", max: "Party Time" },
+    ],
+  },
+  {
+    weapon_id: "w_17",
+    choices: [
+      { path: "A", name: "Blue Flame", desc: "High Dmg", max: "Plasma Torch" },
+      { path: "B", name: "Oil Slick", desc: "Slows", max: "Chain Reaction" },
+    ],
+  },
+  {
+    weapon_id: "w_18",
+    choices: [
+      { path: "A", name: "Ricochet Rail", desc: "Bounces", max: "Geometry" },
+      { path: "B", name: "Anti-Materiel", desc: "Wall Pierce", max: "X-Ray" },
+    ],
+  },
+  {
+    weapon_id: "w_19",
+    choices: [
+      { path: "A", name: "Virus Upload", desc: "Infection", max: "Botnet" },
+      {
+        path: "B",
+        name: "Source Code",
+        desc: "Terrain Glitch",
+        max: "The Void",
+      },
+    ],
+  },
+  {
+    weapon_id: "w_20",
+    choices: [
+      {
+        path: "A",
+        name: "Pay-to-Win",
+        desc: "Spend Gold for Dmg",
+        max: "Whale",
+      },
+      { path: "B", name: "HODL", desc: "Dmg per Gold", max: "Diamond Hands" },
+    ],
+  },
+  {
+    weapon_id: "w_21",
+    choices: [
+      { path: "A", name: "Swarm", desc: "50 Tiny Drones", max: "Locusts" },
+      {
+        path: "B",
+        name: "Mothership",
+        desc: "1 Big Drone",
+        max: "Independence",
+      },
+    ],
+  },
+  {
+    weapon_id: "w_22",
+    choices: [
+      {
+        path: "A",
+        name: "Blood Bank",
+        desc: "Heal -> Shield",
+        max: "Hemomancy",
+      },
+      { path: "B", name: "Sawblade", desc: "Dmg Ramps", max: "Eviscerate" },
+    ],
+  },
+  {
+    weapon_id: "w_23",
+    choices: [
+      { path: "A", name: "Dubstep Gun", desc: "Beat Fire", max: "The Drop" },
+      { path: "B", name: "Brown Note", desc: "Fear", max: "Resonance Cascade" },
+    ],
+  },
+  {
+    weapon_id: "w_24",
+    choices: [
+      { path: "A", name: "Zero-Day", desc: "Debuffs", max: "Admin Access" },
+      {
+        path: "B",
+        name: "Infinite Loop",
+        desc: "Time Trap",
+        max: "Stack Overflow",
+      },
+    ],
+  },
+];
