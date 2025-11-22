@@ -1,7 +1,8 @@
-import { Player, Weapon, Item } from "../../types";
+import { Player, Weapon, Item, Passive } from "../../types";
 import { player as basePlayer } from "./Player";
 import { WEAPONS } from "./Weapons";
 import { ITEMS } from "./Items";
+import { PASSIVE_DB } from "./Passives";
 
 export interface HudState {
   hp: number;
@@ -22,7 +23,7 @@ export interface HudState {
 type GameEventMap = {
   hud: HudState;
   starter: Weapon[];
-  levelUp: Weapon[];
+  levelUp: LevelChoice[];
   item: Item;
   state: { isRunning: boolean; isPaused: boolean };
   speed: number;
@@ -41,6 +42,17 @@ function sampleArray<T>(source: T[], count: number): T[] {
   return picks;
 }
 
+export type LevelChoice = {
+  id: string;
+  kind: "weapon" | "passive";
+  name: string;
+  type: string;
+  icon: string;
+  desc: string;
+  level: number;
+  isUpgrade: boolean;
+};
+
 export class GameState {
   private player: Player;
   private wave = 1;
@@ -50,7 +62,11 @@ export class GameState {
   private isPaused = false;
   private speed = 1;
   private starterChoices: Weapon[] = [];
-  private levelChoices: Weapon[] = [];
+  private levelChoices: LevelChoice[] = [];
+  private weaponLevels = new Map<string, number>();
+  private passiveLevels = new Map<string, number>();
+  private readonly maxWeaponSlots = basePlayer.maxWeapons;
+  private readonly maxPassiveSlots = 4;
   private listeners: Partial<{ [K in GameEventKey]: Set<Listener<K>> }> = {};
 
   constructor() {
@@ -96,7 +112,7 @@ export class GameState {
     return this.starterChoices;
   }
 
-  getLevelChoices(): Weapon[] {
+  getLevelChoices(): LevelChoice[] {
     return this.levelChoices;
   }
 
@@ -199,13 +215,30 @@ export class GameState {
   selectStarterWeapon(weaponId: string): void {
     if (this.player.activeSpells.includes(weaponId)) return;
     this.player.activeSpells.push(weaponId);
+    this.weaponLevels.set(weaponId, 1);
     this.emit("starter", this.starterChoices);
     this.emit("hud", this.getHudState());
   }
 
-  chooseLevelUp(weaponId: string): void {
-    if (!this.player.activeSpells.includes(weaponId)) {
-      this.player.activeSpells.push(weaponId);
+  chooseLevelUp(choiceId: string, kind: LevelChoice["kind"]): void {
+    if (kind === "weapon") {
+      if (!this.player.activeSpells.includes(choiceId)) {
+        if (this.player.activeSpells.length >= this.maxWeaponSlots) return;
+        this.player.activeSpells.push(choiceId);
+        this.weaponLevels.set(choiceId, 1);
+      } else {
+        const newLevel = (this.weaponLevels.get(choiceId) ?? 1) + 1;
+        this.weaponLevels.set(choiceId, newLevel);
+      }
+    } else {
+      if (!this.player.passives.includes(choiceId)) {
+        if (this.player.passives.length >= this.maxPassiveSlots) return;
+        this.player.passives.push(choiceId);
+        this.passiveLevels.set(choiceId, 1);
+      } else {
+        const newLevel = (this.passiveLevels.get(choiceId) ?? 1) + 1;
+        this.passiveLevels.set(choiceId, newLevel);
+      }
     }
     this.levelChoices = [];
     this.emit("levelUp", this.levelChoices);
@@ -226,10 +259,69 @@ export class GameState {
   }
 
   private rollLevelChoices(): void {
-    const available = WEAPONS.filter((w) => !this.player.activeSpells.includes(w.id));
-    const pool = available.length >= 3 ? available : WEAPONS;
+    const pool = this.buildLevelChoicePool();
     this.levelChoices = sampleArray(pool, 3);
     this.emit("levelUp", this.levelChoices);
+  }
+
+  private buildLevelChoicePool(): LevelChoice[] {
+    const pool: LevelChoice[] = [];
+    const weaponSlotsFull = this.player.activeSpells.length >= this.maxWeaponSlots;
+    const passiveSlotsFull = this.player.passives.length >= this.maxPassiveSlots;
+
+    this.player.activeSpells.forEach((id) => {
+      const weapon = WEAPONS.find((w) => w.id === id);
+      if (!weapon) return;
+      pool.push(this.createWeaponChoice(weapon, true));
+    });
+
+    if (!weaponSlotsFull) {
+      WEAPONS.filter((w) => !this.player.activeSpells.includes(w.id)).forEach((weapon) => {
+        pool.push(this.createWeaponChoice(weapon, false));
+      });
+    }
+
+    this.player.passives.forEach((id) => {
+      const passive = PASSIVE_DB.find((p) => p.id === id);
+      if (!passive) return;
+      pool.push(this.createPassiveChoice(passive, true));
+    });
+
+    if (!passiveSlotsFull) {
+      PASSIVE_DB.filter((p) => !this.player.passives.includes(p.id)).forEach((passive) => {
+        pool.push(this.createPassiveChoice(passive, false));
+      });
+    }
+
+    return pool;
+  }
+
+  private createWeaponChoice(weapon: Weapon, isUpgrade: boolean): LevelChoice {
+    const currentLevel = this.weaponLevels.get(weapon.id) ?? 0;
+    return {
+      id: weapon.id,
+      kind: "weapon",
+      name: weapon.name,
+      type: isUpgrade ? `Weapon Lv ${currentLevel + 1}` : `Weapon Lv 1`,
+      icon: weapon.icon,
+      desc: weapon.desc,
+      level: isUpgrade ? currentLevel + 1 : 1,
+      isUpgrade,
+    };
+  }
+
+  private createPassiveChoice(passive: Passive, isUpgrade: boolean): LevelChoice {
+    const currentLevel = this.passiveLevels.get(passive.id) ?? 0;
+    return {
+      id: passive.id,
+      kind: "passive",
+      name: passive.name,
+      type: isUpgrade ? `Passive Lv ${currentLevel + 1}` : `Passive Lv 1`,
+      icon: passive.icon,
+      desc: passive.desc,
+      level: isUpgrade ? currentLevel + 1 : 1,
+      isUpgrade,
+    };
   }
 
   collectXp(amount: number): void {
