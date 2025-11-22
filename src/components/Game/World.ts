@@ -167,6 +167,8 @@ export function setupWorld(gameState: GameState) {
   // --- PLAYER CONTROLS ---
   const keys = { w: false, a: false, s: false, d: false };
   let curseOverlayEnabled = false;
+  let isRunning = false;
+  let isPaused = false;
   let lastCollisionFeedback = 0;
   window.addEventListener("keydown", (e) => {
     if (e.key === "w") keys.w = true;
@@ -194,9 +196,16 @@ export function setupWorld(gameState: GameState) {
     );
   });
 
+  gameState.on("state", (state) => {
+    isRunning = state.isRunning;
+    isPaused = state.isPaused;
+  });
+
   // --- ENTITY MANAGEMENT ---
   // Example: Move player with WASD
   function updatePlayer() {
+    if (!isRunning || isPaused) return;
+
     let speed = 0.5;
     if (keys.w) charGroup.position.z -= speed;
     if (keys.s) charGroup.position.z += speed;

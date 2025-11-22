@@ -401,6 +401,12 @@ canvas {
   border-color: white;
 }
 
+.upgrade-card.selected {
+  border-color: #00ffff;
+  box-shadow: 0 0 25px rgba(0, 255, 255, 0.35);
+  outline: 2px solid rgba(0, 255, 255, 0.4);
+}
+
 .upgrade-card.evolution {
   border-color: #ffaa00;
   background: radial-gradient(circle, #221100, #000);
