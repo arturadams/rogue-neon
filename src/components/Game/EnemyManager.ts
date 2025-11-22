@@ -28,10 +28,16 @@ const DROP_PROFILES: Record<EnemyKind, DropProfile> = {
 };
 
 export type Enemy = {
-  mesh: THREE.Mesh;
+  mesh: THREE.Group;
   speed: number;
   kind: EnemyKind;
   dropProfile: DropProfile;
+};
+
+type SpawnEffect = {
+  mesh: THREE.Mesh;
+  remaining: number;
+  duration: number;
 };
 
 export class EnemyManager {
@@ -41,6 +47,7 @@ export class EnemyManager {
   private isPaused = false;
   private currentWave = 1;
   private speedMult = 1;
+  private spawnEffects: SpawnEffect[] = [];
 
   constructor(
     private readonly worldGroup: THREE.Group,
@@ -74,18 +81,14 @@ export class EnemyManager {
     ];
     const lane = laneOffsets[Math.floor(Math.random() * laneOffsets.length)];
     const kind = this.pickEnemyKind();
-    const geometry = new THREE.DodecahedronGeometry(this.getEnemySize(kind), 0);
-    const material = new THREE.MeshStandardMaterial({
-      color: this.getWaveColor(kind),
-      emissive: new THREE.Color(this.getWaveColor(kind)),
-      emissiveIntensity: 0.4,
-      wireframe: true,
-    });
-    const mesh = new THREE.Mesh(geometry, material);
+    const mesh = this.createEnemyModel(kind);
     mesh.position.set(lane, 2.5, this.config.spawnZ);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     this.worldGroup.add(mesh);
+    this.spawnEffects.push(
+      this.createSpawnBurst(mesh.position, this.getWaveColor(kind))
+    );
 
     const speed = 0.02 + this.currentWave * 0.0025;
     this.enemies.push({
@@ -166,6 +169,31 @@ export class EnemyManager {
     const delta = deltaMs * this.speedMult;
     this.enemies.forEach((enemy) => {
       enemy.mesh.position.z += enemy.speed * delta;
+      const spin = enemy.mesh.userData.spin as
+        | { x: number; y: number; z: number }
+        | undefined;
+      if (spin) {
+        enemy.mesh.rotation.x += spin.x * delta;
+        enemy.mesh.rotation.y += spin.y * delta;
+        enemy.mesh.rotation.z += spin.z * delta;
+      }
+    });
+
+    this.spawnEffects = this.spawnEffects.filter((effect) => {
+      effect.remaining -= delta;
+      const progress = 1 - Math.max(effect.remaining, 0) / effect.duration;
+      const scale = 1 + 1.4 * progress;
+      effect.mesh.scale.setScalar(scale);
+      const material = effect.mesh.material as THREE.MeshBasicMaterial;
+      material.opacity = 0.65 * (1 - progress);
+      material.needsUpdate = true;
+      if (effect.remaining <= 0) {
+        this.worldGroup.remove(effect.mesh);
+        effect.mesh.geometry.dispose();
+        material.dispose();
+        return false;
+      }
+      return true;
     });
 
     this.enemies = this.enemies.filter((enemy) => {
@@ -179,12 +207,168 @@ export class EnemyManager {
 
   private cleanupEnemy(enemy: Enemy): void {
     this.worldGroup.remove(enemy.mesh);
-    enemy.mesh.geometry.dispose();
-    const material = enemy.mesh.material as THREE.Material | THREE.Material[];
-    if (Array.isArray(material)) {
-      material.forEach((mat) => mat.dispose());
+    enemy.mesh.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (mesh.geometry) mesh.geometry.dispose();
+      if (Array.isArray(mesh.material)) {
+        mesh.material.forEach((mat) => mat.dispose());
+      } else if (mesh.material) {
+        (mesh.material as THREE.Material).dispose();
+      }
+    });
+  }
+
+  private createEnemyModel(kind: EnemyKind): THREE.Group {
+    const group = new THREE.Group();
+    const baseColor = new THREE.Color(this.getWaveColor(kind));
+    const shadowColor = baseColor.clone().multiplyScalar(0.35);
+    const glowColor = baseColor.clone().lerp(new THREE.Color(0xffffff), 0.15);
+    const size = this.getEnemySize(kind);
+
+    if (kind === "grunt") {
+      const body = new THREE.Mesh(
+        new THREE.OctahedronGeometry(size * 0.9, 1),
+        new THREE.MeshStandardMaterial({
+          color: shadowColor,
+          emissive: glowColor,
+          emissiveIntensity: 1.1,
+          metalness: 0.65,
+          roughness: 0.25,
+        })
+      );
+      const facets = new THREE.Mesh(
+        new THREE.ConeGeometry(size * 0.3, size * 0.6, 12, 1, true),
+        new THREE.MeshPhysicalMaterial({
+          color: glowColor,
+          emissive: baseColor,
+          emissiveIntensity: 1.35,
+          transmission: 0.35,
+          opacity: 0.75,
+          transparent: true,
+          metalness: 0.4,
+          roughness: 0.15,
+        })
+      );
+      facets.rotation.x = Math.PI;
+      facets.position.y = -size * 0.25;
+      const edges = new THREE.LineSegments(
+        new THREE.EdgesGeometry(body.geometry),
+        new THREE.LineBasicMaterial({
+          color: baseColor,
+          transparent: true,
+          opacity: 0.9,
+        })
+      );
+      edges.scale.setScalar(1.03);
+      group.add(body, facets, edges);
+      group.userData.spin = { x: 0, y: 0.0009, z: 0 };
+    } else if (kind === "miniboss") {
+      const knot = new THREE.Mesh(
+        new THREE.TorusKnotGeometry(size * 0.45, size * 0.16, 140, 20),
+        new THREE.MeshStandardMaterial({
+          color: shadowColor,
+          emissive: glowColor,
+          emissiveIntensity: 1.45,
+          metalness: 0.7,
+          roughness: 0.2,
+          envMapIntensity: 1.1,
+        })
+      );
+      const plates = new THREE.Mesh(
+        new THREE.CylinderGeometry(size * 0.7, size * 0.7, size * 0.55, 24, 1, true),
+        new THREE.MeshPhysicalMaterial({
+          color: glowColor,
+          emissive: baseColor,
+          emissiveIntensity: 1.6,
+          clearcoat: 0.75,
+          clearcoatRoughness: 0.15,
+          transparent: true,
+          opacity: 0.6,
+          side: THREE.DoubleSide,
+          metalness: 0.35,
+          roughness: 0.3,
+        })
+      );
+      plates.rotation.x = Math.PI / 2;
+      const halo = new THREE.Mesh(
+        new THREE.TorusGeometry(size * 0.75, size * 0.08, 24, 64),
+        new THREE.MeshBasicMaterial({
+          color: baseColor,
+          transparent: true,
+          opacity: 0.8,
+          blending: THREE.AdditiveBlending,
+        })
+      );
+      halo.rotation.x = Math.PI / 2;
+      group.add(knot, plates, halo);
+      group.userData.spin = { x: 0.00015, y: 0.0012, z: 0 };
     } else {
-      material.dispose();
+      const shell = new THREE.Mesh(
+        new THREE.IcosahedronGeometry(size * 0.9, 2),
+        new THREE.MeshPhysicalMaterial({
+          color: shadowColor,
+          emissive: baseColor,
+          emissiveIntensity: 1.8,
+          metalness: 0.8,
+          roughness: 0.18,
+          transmission: 0.12,
+          thickness: 1.6,
+          clearcoat: 1,
+          clearcoatRoughness: 0.08,
+        })
+      );
+      const core = new THREE.Mesh(
+        new THREE.OctahedronGeometry(size * 0.4, 2),
+        new THREE.MeshStandardMaterial({
+          color: new THREE.Color(0x111111),
+          emissive: glowColor,
+          emissiveIntensity: 2,
+          metalness: 0.9,
+          roughness: 0.05,
+        })
+      );
+      const rings = new THREE.Mesh(
+        new THREE.TorusGeometry(size * 0.95, size * 0.12, 24, 96),
+        new THREE.MeshBasicMaterial({
+          color: glowColor,
+          transparent: true,
+          opacity: 0.7,
+          blending: THREE.AdditiveBlending,
+        })
+      );
+      rings.rotation.x = Math.PI / 2;
+      const crest = new THREE.Mesh(
+        new THREE.BoxGeometry(size * 0.2, size * 1.6, size * 0.2),
+        new THREE.MeshStandardMaterial({
+          color: glowColor,
+          emissive: baseColor,
+          emissiveIntensity: 1.4,
+          metalness: 0.75,
+          roughness: 0.2,
+        })
+      );
+      crest.position.y = size * 0.3;
+      group.add(shell, core, rings, crest);
+      group.userData.spin = { x: 0.0002, y: 0.0015, z: 0.0002 };
     }
+
+    return group;
+  }
+
+  private createSpawnBurst(position: THREE.Vector3, color: number): SpawnEffect {
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(1.4, 2.2, 28, 1),
+      new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.65,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+      })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(position.x, 0.05, position.z);
+    this.worldGroup.add(ring);
+    return { mesh: ring, remaining: 450, duration: 450 };
   }
 }
