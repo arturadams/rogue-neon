@@ -1,4 +1,4 @@
-import { GameState, HudState } from "../Game/GameState";
+import { GameState, HudState, LevelChoice } from "../Game/GameState";
 import { Weapon, Item } from "../../types";
 import { WEAPONS } from "../Game/Weapons";
 import { ITEMS } from "../Game/Items";
@@ -35,12 +35,23 @@ interface UIElements {
   speedButtons: NodeListOf<HTMLButtonElement> | null;
 }
 
-function createCardMarkup(choice: Weapon): string {
+function createWeaponCardMarkup(choice: Weapon): string {
   return `
     <div class="upgrade-card" data-id="${choice.id}">
       <div class="spell-icon">${choice.icon}</div>
       <div style="font-weight: bold;">${choice.name}</div>
       <div style="font-size: 12px; color: #888;">${choice.type} / ${choice.scaling}</div>
+      <div style="font-size: 12px;">${choice.desc}</div>
+    </div>
+  `;
+}
+
+function createLevelCardMarkup(choice: LevelChoice): string {
+  return `
+    <div class="upgrade-card" data-id="${choice.id}" data-kind="${choice.kind}">
+      <div class="spell-icon">${choice.icon}</div>
+      <div style="font-weight: bold;">${choice.name}</div>
+      <div style="font-size: 12px; color: #888;">${choice.type}</div>
       <div style="font-size: 12px;">${choice.desc}</div>
     </div>
   `;
@@ -197,7 +208,9 @@ export class UIController {
 
   private renderStarterChoices(choices: Weapon[]): void {
     if (!this.ui.starterCards) return;
-    this.ui.starterCards.innerHTML = choices.map((choice) => createCardMarkup(choice)).join("");
+    this.ui.starterCards.innerHTML = choices
+      .map((choice) => createWeaponCardMarkup(choice))
+      .join("");
     this.ui.starterCards.querySelectorAll<HTMLElement>(".upgrade-card").forEach((card) => {
       card.addEventListener("click", () => {
         const id = card.dataset.id;
@@ -210,20 +223,23 @@ export class UIController {
     });
   }
 
-  private renderLevelUpChoices(choices: Weapon[]): void {
+  private renderLevelUpChoices(choices: LevelChoice[]): void {
     if (!this.ui.upgradeCards || !this.ui.levelUpModal) return;
     if (!choices.length) {
       this.ui.levelUpModal.style.display = "none";
       return;
     }
 
-    this.ui.upgradeCards.innerHTML = choices.map((choice) => createCardMarkup(choice)).join("");
+    this.ui.upgradeCards.innerHTML = choices
+      .map((choice) => createLevelCardMarkup(choice))
+      .join("");
     this.ui.levelUpModal.style.display = "block";
     this.ui.upgradeCards.querySelectorAll<HTMLElement>(".upgrade-card").forEach((card) => {
       card.addEventListener("click", () => {
         const id = card.dataset.id;
-        if (!id) return;
-        this.gameState.chooseLevelUp(id);
+        const kind = card.dataset.kind as LevelChoice["kind"] | undefined;
+        if (!id || !kind) return;
+        this.gameState.chooseLevelUp(id, kind);
         this.ui.levelUpModal!.style.display = "none";
       });
     });
