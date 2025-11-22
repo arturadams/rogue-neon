@@ -17,8 +17,9 @@ import {
   spawnFloatingText,
   updateFloatingText,
 } from "../Effects/FloatingText";
+import { GameState } from "./GameState";
 
-export function setupWorld() {
+export function setupWorld(gameState: GameState) {
   // --- CONFIG ---
   const CONFIG = {
     spawnZ: -120,
@@ -148,13 +149,6 @@ export function setupWorld() {
     if (keys.d) charGroup.position.x += speed;
   }
 
-  // --- HUD UPDATES ---
-  function updateHUD() {
-    const hpText = document.getElementById("hp-text");
-    if (hpText) hpText.textContent = "100/100"; // Example static value
-    // Add more HUD updates as needed
-  }
-
   // --- ANIMATION LOOP ---
   let lastTime = performance.now();
   function animate(now: number) {
@@ -162,8 +156,8 @@ export function setupWorld() {
     lastTime = now;
 
     requestAnimationFrame(animate);
+    gameState.tick(delta);
     updatePlayer();
-    updateHUD();
     updateFloatingText(delta);
     updateScanline(now);
     updateVignetteCurse(curseOverlayEnabled);
