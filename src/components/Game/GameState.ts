@@ -104,6 +104,10 @@ export class GameState {
     return this.player.activeSpells.length > 0;
   }
 
+  getActiveWeapons(): string[] {
+    return [...this.player.activeSpells];
+  }
+
   startGame(): void {
     this.isRunning = true;
     this.isPaused = false;
