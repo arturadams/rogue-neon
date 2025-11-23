@@ -12,6 +12,7 @@ type Projectile = {
   life: number;
   followPlayer?: boolean;
   direction?: THREE.Vector3;
+  weapon: Weapon;
 };
 
 type WeaponRuntime = {
@@ -165,7 +166,7 @@ export class WeaponSystem {
     mesh.lookAt(mesh.position.clone().add(direction));
 
     this.worldGroup.add(mesh);
-    this.projectiles.push({ object: mesh, velocity, life, direction });
+    this.projectiles.push({ object: mesh, velocity, life, direction, weapon });
   }
 
   private spawnBeam(weapon: Weapon): void {
@@ -198,6 +199,7 @@ export class WeaponSystem {
       life: 150,
       followPlayer: true,
       direction,
+      weapon,
     });
   }
 
@@ -211,7 +213,8 @@ export class WeaponSystem {
 
       const hitEnemy = this.findProjectileHit(projectile);
       if (hitEnemy) {
-        this.enemyManager.defeatEnemy(hitEnemy);
+        const damage = this.calculateWeaponDamage(projectile.weapon);
+        this.enemyManager.applyDamage(hitEnemy, damage);
         this.removeProjectile(projectile);
         return;
       }
@@ -245,7 +248,12 @@ export class WeaponSystem {
         .getEnemies()
         .slice()
         .filter((enemy) => this.isEnemyInBeam(enemy, beam))
-        .forEach((enemy) => this.enemyManager.defeatEnemy(enemy));
+        .forEach((enemy) =>
+          this.enemyManager.applyDamage(
+            enemy,
+            this.calculateWeaponDamage(beam.weapon)
+          )
+        );
 
       if (beam.life <= 0) {
         this.removeBeam(beam);
@@ -295,6 +303,12 @@ export class WeaponSystem {
 
     const index = this.beams.indexOf(beam);
     if (index >= 0) this.beams.splice(index, 1);
+  }
+
+  private calculateWeaponDamage(weapon: Weapon): number {
+    const baseDamage = weapon.base?.dmg ?? 0;
+    // Placeholder for future scaling hooks (e.g., wave multipliers, passives)
+    return baseDamage;
   }
 
   private getAimDirection(): THREE.Vector3 {
