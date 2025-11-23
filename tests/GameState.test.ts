@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { GameState } from "../src/components/Game/GameState";
 import { ITEMS } from "../src/components/Game/Items";
 import { WEAPONS } from "../src/components/Game/Weapons";

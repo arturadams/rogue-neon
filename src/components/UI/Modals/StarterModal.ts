@@ -1,8 +1,6 @@
 export function StarterModal() {
-  return `
-        <div id="starter-modal" class="modal">
-            <h2 style="color:#00ffff">SELECT PRIMARY WEAPON</h2>
-            <div class="card-container" id="starter-cards"></div>
-        </div>
-    `;
+  return `<div id="starter-modal" class="modal" style="display:none;">
+      <h2>Select Starter Weapon</h2>
+      <div id="starter-choices"></div>
+    </div>`;
 }

@@ -1,45 +1,46 @@
 import "./style.css";
-import { ProgressBar } from "./components/UI/ProgressBar";
-import { StatsPanel } from "./components/UI/StatsPanel";
-import { SpellDock } from "./components/UI/SpellDock";
-import { InventoryPanel } from "./components/UI/InventoryPanel";
-import { ControlsPanel } from "./components/UI/ControlsPanel";
-import { StarterModal } from "./components/UI/Modals/StarterModal";
-import { StartScreenModal } from "./components/UI/Modals/StartScreenModal";
-import { LevelUpModal } from "./components/UI/Modals/LevelUpModal";
-import { ItemModal } from "./components/UI/Modals/ItemModal";
-import { DatabaseModal } from "./components/UI/Modals/DatabaseModal";
-import { GameOverModal } from "./components/UI/Modals/GameOverModal";
-import { GameState } from "./components/Game/GameState";
-import { UIController } from "./components/UI/UIController";
+import { createApp } from "./app";
 
-// Mount all UI components to #ui-layer
-const uiLayer = document.getElementById("ui-layer");
-if (uiLayer) {
-  uiLayer.innerHTML =
-    ProgressBar() +
-    ControlsPanel() +
-    StatsPanel() +
-    SpellDock() +
-    InventoryPanel() +
-    StartScreenModal() +
-    StarterModal() +
-    LevelUpModal() +
-    ItemModal() +
-    DatabaseModal() +
-    GameOverModal();
+function ensureBaseMarkup(): void {
+  if (!document.getElementById("scanline")) {
+    const scanline = document.createElement("div");
+    scanline.id = "scanline";
+    document.body.prepend(scanline);
+  }
+
+  if (!document.getElementById("vignette-curse")) {
+    const vignette = document.createElement("div");
+    vignette.id = "vignette-curse";
+    document.body.prepend(vignette);
+  }
+
+  let appRoot = document.getElementById("app");
+  if (!appRoot) {
+    appRoot = document.createElement("div");
+    appRoot.id = "app";
+    document.body.appendChild(appRoot);
+  }
+
+  if (!document.getElementById("game-canvas")) {
+    const canvasHost = document.createElement("div");
+    canvasHost.id = "game-canvas";
+    appRoot.appendChild(canvasHost);
+  }
+
+  if (!document.getElementById("ui-layer")) {
+    const uiLayer = document.createElement("div");
+    uiLayer.id = "ui-layer";
+    appRoot.appendChild(uiLayer);
+  }
 }
 
-import { setupWorld } from "./components/Game/World";
+const bootstrap = () => {
+  ensureBaseMarkup();
+  createApp();
+};
 
-const gameState = new GameState();
-const uiController = new UIController(gameState);
-uiController.initialize();
-
-// Initialize the game world (THREE.js scene, camera, renderer, etc.)
-let world = setupWorld(gameState);
-
-gameState.on("reset", () => {
-  world.teardown();
-  world = setupWorld(gameState);
-});
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", bootstrap, { once: true });
+} else {
+  bootstrap();
+}

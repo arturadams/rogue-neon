@@ -1,12 +1,9 @@
 export function ItemModal() {
-  return `
-        <div id="item-modal" class="modal">
-            <div style="font-size: 12px; color: #888; letter-spacing: 2px;">HARDWARE FOUND</div>
-            <div id="item-icon-display">🎁</div>
-            <div id="item-title">UNKNOWN ITEM</div>
-            <div id="item-rarity">COMMON</div>
-            <div id="item-desc">Description goes here.</div>
-            <button class="btn">INTEGRATE</button>
-        </div>
-    `;
+  return `<div id="item-modal" class="modal" style="display:none;">
+      <div id="item-icon-display">★</div>
+      <div id="item-title">New Item</div>
+      <div id="item-rarity">Common</div>
+      <div id="item-desc">A mysterious artifact recovered from the grid.</div>
+      <button class="btn" id="item-continue">CONTINUE</button>
+    </div>`;
 }
