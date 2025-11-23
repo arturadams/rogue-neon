@@ -63,6 +63,18 @@ export class EnemyManager {
     });
   }
 
+  reset(): void {
+    this.enemies.forEach((enemy) => this.cleanupEnemy(enemy));
+    this.enemies = [];
+    this.spawnEffects.forEach((effect) => {
+      this.worldGroup.remove(effect.mesh);
+      effect.mesh.geometry.dispose();
+      (effect.mesh.material as THREE.Material).dispose();
+    });
+    this.spawnEffects = [];
+    this.spawnTimer = 0;
+  }
+
   private syncHud(hud: HudState): void {
     this.isRunning = hud.isRunning;
     this.isPaused = hud.isPaused;

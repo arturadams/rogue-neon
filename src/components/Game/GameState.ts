@@ -20,6 +20,12 @@ export interface HudState {
   speed: number;
 }
 
+export interface GameOverStats {
+  wave: number;
+  gold: number;
+  level: number;
+}
+
 type GameEventMap = {
   hud: HudState;
   starter: Weapon[];
@@ -27,6 +33,8 @@ type GameEventMap = {
   item: Item;
   state: { isRunning: boolean; isPaused: boolean };
   speed: number;
+  gameOver: GameOverStats;
+  reset: void;
 };
 
 type GameEventKey = keyof GameEventMap;
@@ -65,6 +73,7 @@ export class GameState {
   private isRunning = false;
   private isPaused = false;
   private isModalPaused = false;
+  private isGameOver = false;
   private speed = 1;
   private starterChoices: Weapon[] = [];
   private levelChoices: LevelChoice[] = [];
@@ -77,13 +86,7 @@ export class GameState {
 
   constructor(random: () => number = Math.random) {
     this.random = random;
-    this.player = {
-      ...basePlayer,
-      activeSpells: [],
-      passives: [],
-      items: [],
-      banList: [],
-    };
+    this.player = this.createBasePlayer();
     this.rollStarterChoices();
     this.emit("hud", this.getHudState());
   }
@@ -138,6 +141,7 @@ export class GameState {
   }
 
   startGame(): void {
+    if (this.isGameOver) return;
     this.isRunning = true;
     this.isPaused = false;
     this.emit("state", {
@@ -148,7 +152,7 @@ export class GameState {
   }
 
   togglePause(): void {
-    if (!this.isRunning) return;
+    if (!this.isRunning || this.isGameOver) return;
     this.isPaused = !this.isPaused;
     this.emit("state", {
       isRunning: this.isRunning,
@@ -158,6 +162,7 @@ export class GameState {
   }
 
   setModalPause(isPaused: boolean): void {
+    if (this.isGameOver) return;
     this.isModalPaused = isPaused;
     this.emit("state", {
       isRunning: this.isRunning,
@@ -197,11 +202,16 @@ export class GameState {
   }
 
   takeDamage(amount: number): void {
+    if (this.isGameOver || !this.isRunning) return;
     this.player.hp = Math.max(0, this.player.hp - amount);
     this.emit("hud", this.getHudState());
+    if (this.player.hp === 0) {
+      this.handleGameOver();
+    }
   }
 
   heal(amount: number): void {
+    if (this.isGameOver) return;
     this.player.hp = Math.min(this.player.maxHp, this.player.hp + amount);
     this.emit("hud", this.getHudState());
   }
@@ -361,12 +371,17 @@ export class GameState {
   }
 
   collectXp(amount: number): void {
+    if (this.isGameOver) return;
     this.gainXp(amount);
     this.emit("hud", this.getHudState());
   }
 
   getMagnetRadius(): number {
     return this.player.magnetRadius;
+  }
+
+  restartGame(): void {
+    this.resetState();
   }
 
   private gainXp(amount: number): void {
@@ -381,5 +396,54 @@ export class GameState {
 
   private isEffectivelyPaused(): boolean {
     return this.isPaused || this.isModalPaused;
+  }
+
+  private handleGameOver(): void {
+    this.isGameOver = true;
+    this.isRunning = false;
+    this.isPaused = true;
+    this.emit("state", {
+      isRunning: this.isRunning,
+      isPaused: this.isEffectivelyPaused(),
+    });
+    this.emit("gameOver", {
+      wave: this.wave,
+      gold: this.player.gold,
+      level: this.player.level,
+    });
+    this.emit("hud", this.getHudState());
+  }
+
+  private resetState(): void {
+    this.player = this.createBasePlayer();
+    this.wave = 1;
+    this.progress = 0;
+    this.isRunning = false;
+    this.isPaused = false;
+    this.isModalPaused = false;
+    this.isGameOver = false;
+    this.speed = 1;
+    this.weaponLevels.clear();
+    this.passiveLevels.clear();
+    this.levelChoices = [];
+    this.emit("levelUp", this.levelChoices);
+    this.rollStarterChoices();
+    this.emit("reset", undefined as void);
+    this.emit("speed", this.speed);
+    this.emit("state", {
+      isRunning: this.isRunning,
+      isPaused: this.isEffectivelyPaused(),
+    });
+    this.emit("hud", this.getHudState());
+  }
+
+  private createBasePlayer(): Player {
+    return {
+      ...basePlayer,
+      activeSpells: [],
+      passives: [],
+      items: [],
+      banList: [],
+    };
   }
 }

@@ -29,6 +29,12 @@ export class XpOrbManager {
     this.gameState.on("speed", (speed) => (this.speedMult = speed));
   }
 
+  reset(): void {
+    this.orbs.slice().forEach((orb) => this.cleanupOrb(orb));
+    this.isRunning = false;
+    this.isPaused = false;
+  }
+
   spawnOrb(position: THREE.Vector3, value: number): void {
     const geometry = new THREE.SphereGeometry(1.1, 10, 10);
     const material = new THREE.MeshStandardMaterial({

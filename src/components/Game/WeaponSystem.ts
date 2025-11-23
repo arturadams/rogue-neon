@@ -45,6 +45,14 @@ export class WeaponSystem {
     this.gameState.on("speed", (speed) => (this.speedMult = speed));
   }
 
+  reset(): void {
+    this.activeWeapons.clear();
+    this.projectiles.slice().forEach((projectile) => this.removeProjectile(projectile));
+    this.beams.slice().forEach((beam) => this.removeBeam(beam));
+    this.isRunning = false;
+    this.isPaused = false;
+  }
+
   update(deltaMs: number): void {
     this.syncActiveWeapons();
 
