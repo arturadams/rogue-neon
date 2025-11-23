@@ -32,6 +32,7 @@ export type Enemy = {
   speed: number;
   kind: EnemyKind;
   dropProfile: DropProfile;
+  radius: number;
 };
 
 type SpawnEffect = {
@@ -51,6 +52,7 @@ export class EnemyManager {
 
   constructor(
     private readonly worldGroup: THREE.Group,
+    private readonly playerGroup: THREE.Group,
     private readonly config: WorldConfig,
     private readonly gameState: GameState,
     private readonly xpOrbs: XpOrbManager,
@@ -103,11 +105,13 @@ export class EnemyManager {
     );
 
     const speed = 0.02 + this.currentWave * 0.0025;
+    const radius = this.getEnemySize(kind) * 0.55;
     this.enemies.push({
       mesh,
       speed,
       kind,
       dropProfile: DROP_PROFILES[kind],
+      radius,
     });
   }
 
@@ -155,6 +159,12 @@ export class EnemyManager {
     return 3;
   }
 
+  private getContactDamage(kind: EnemyKind): number {
+    if (kind === "boss") return 35;
+    if (kind === "miniboss") return 18;
+    return 10;
+  }
+
   private pickEnemyKind(): EnemyKind {
     const bossWave = this.currentWave % 10 === 0;
     const bossChance = bossWave ? 0.2 : 0.05;
@@ -178,9 +188,21 @@ export class EnemyManager {
       this.spawnTimer = interval;
     }
 
+    const halfLane = this.config.laneWidth / 2;
+    const playerPosition = this.playerGroup.position;
+    let hitCooldownRemaining =
+      (this.playerGroup.userData.hitCooldownRemaining as number | undefined) || 0;
+    hitCooldownRemaining = Math.max(0, hitCooldownRemaining - deltaMs);
+
     const delta = deltaMs * this.speedMult;
     this.enemies.forEach((enemy) => {
       enemy.mesh.position.z += enemy.speed * delta;
+      enemy.mesh.position.x = Math.min(
+        Math.max(enemy.mesh.position.x, -halfLane),
+        halfLane
+      );
+      enemy.mesh.position.z = Math.min(enemy.mesh.position.z, this.config.endZone);
+
       const spin = enemy.mesh.userData.spin as
         | { x: number; y: number; z: number }
         | undefined;
@@ -209,12 +231,33 @@ export class EnemyManager {
     });
 
     this.enemies = this.enemies.filter((enemy) => {
-      if (enemy.mesh.position.z > this.config.endZone) {
+      const dx = enemy.mesh.position.x - playerPosition.x;
+      const dz = enemy.mesh.position.z - playerPosition.z;
+      const combinedRadius = enemy.radius + 2.6; // player radius approximation
+      const collided = dx * dx + dz * dz <= combinedRadius * combinedRadius;
+
+      if (collided) {
+        if (hitCooldownRemaining <= 0) {
+          this.gameState.takeDamage(this.getContactDamage(enemy.kind));
+          hitCooldownRemaining = 550;
+          this.cleanupEnemy(enemy);
+          return false;
+        }
+
+        enemy.mesh.position.z = Math.max(
+          enemy.mesh.position.z - 5,
+          this.config.spawnZ
+        );
+      }
+
+      if (enemy.mesh.position.z >= this.config.endZone) {
         this.cleanupEnemy(enemy);
         return false;
       }
       return true;
     });
+
+    this.playerGroup.userData.hitCooldownRemaining = hitCooldownRemaining;
   }
 
   private cleanupEnemy(enemy: Enemy): void {

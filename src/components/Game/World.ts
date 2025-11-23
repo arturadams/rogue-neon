@@ -160,6 +160,7 @@ export function setupWorld(gameState: GameState) {
   );
   const enemyManager = new EnemyManager(
     worldGroup,
+    charGroup,
     CONFIG,
     gameState,
     xpManager,
