@@ -51,6 +51,19 @@ export function setupWorld(gameState: GameState) {
   const pointer = new THREE.Vector2();
   const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   const aimTarget = new THREE.Vector3(0, 0, CONFIG.playerZ - 30);
+  const geometries = new Set<THREE.BufferGeometry>();
+  const materials = new Set<THREE.Material>();
+  const cleanupFns: (() => void)[] = [];
+
+  const trackGeometry = (geometry: THREE.BufferGeometry) => geometries.add(geometry);
+  const trackMaterial = (material: THREE.Material | THREE.Material[]) => {
+    if (Array.isArray(material)) {
+      material.forEach((mat) => materials.add(mat));
+      return;
+    }
+
+    materials.add(material);
+  };
 
   const composer = new EffectComposer(renderer);
   const bloomPass = new UnrealBloomPass(
@@ -77,15 +90,21 @@ export function setupWorld(gameState: GameState) {
   const floor = new THREE.GridHelper(400, 40, 0x330033, 0x080815);
   floor.position.z = -50;
   worldGroup.add(floor);
+  trackGeometry(floor.geometry as THREE.BufferGeometry);
+  trackMaterial(floor.material as THREE.Material | THREE.Material[]);
   const laneL = new THREE.Mesh(
     new THREE.BoxGeometry(0.5, 1, 300),
     new THREE.MeshBasicMaterial({ color: CONFIG.colors.cyan })
   );
   laneL.position.set(-CONFIG.laneWidth / 2 - 1, 0, -50);
   worldGroup.add(laneL);
+  trackGeometry(laneL.geometry as THREE.BufferGeometry);
+  trackMaterial(laneL.material as THREE.Material | THREE.Material[]);
   const laneR = laneL.clone();
   laneR.position.set(CONFIG.laneWidth / 2 + 1, 0, -50);
   worldGroup.add(laneR);
+  trackGeometry(laneR.geometry as THREE.BufferGeometry);
+  trackMaterial(laneR.material as THREE.Material | THREE.Material[]);
 
   // --- PLAYER ---
   const charGroup = new THREE.Group();
@@ -97,6 +116,8 @@ export function setupWorld(gameState: GameState) {
   body.position.y = 2.5;
   body.rotation.y = Math.PI / 4;
   charGroup.add(body);
+  trackGeometry(body.geometry as THREE.BufferGeometry);
+  trackMaterial(body.material as THREE.Material | THREE.Material[]);
   scene.add(charGroup);
 
   const aimLineMaterial = new THREE.LineBasicMaterial({
@@ -111,6 +132,8 @@ export function setupWorld(gameState: GameState) {
   ]);
   const aimLine = new THREE.Line(aimLineGeometry, aimLineMaterial);
   worldGroup.add(aimLine);
+  trackGeometry(aimLineGeometry);
+  trackMaterial(aimLineMaterial);
 
   const targetGeometry = new THREE.RingGeometry(0.6, 1.1, 32);
   const targetMaterial = new THREE.MeshBasicMaterial({
@@ -125,6 +148,8 @@ export function setupWorld(gameState: GameState) {
   targetMesh.rotation.x = -Math.PI / 2;
   targetMesh.position.set(aimTarget.x, 0.05, aimTarget.z);
   worldGroup.add(targetMesh);
+  trackGeometry(targetGeometry);
+  trackMaterial(targetMaterial);
 
   const xpManager = new XpOrbManager(worldGroup, charGroup, gameState, CONFIG);
   const chestManager = new LootChestManager(
@@ -163,6 +188,7 @@ export function setupWorld(gameState: GameState) {
     }
   };
   gameCanvas?.addEventListener("mousemove", updateAimFromPointer);
+  cleanupFns.push(() => gameCanvas?.removeEventListener("mousemove", updateAimFromPointer));
 
   // --- PLAYER CONTROLS ---
   const keys = { w: false, a: false, s: false, d: false };
@@ -172,7 +198,7 @@ export function setupWorld(gameState: GameState) {
   let isGameOver = false;
   let inputLocked = false;
   let lastCollisionFeedback = 0;
-  window.addEventListener("keydown", (e) => {
+  const handleKeyDown = (e: KeyboardEvent) => {
     if (inputLocked) return;
     if (e.key === "w") keys.w = true;
     if (e.key === "a") keys.a = true;
@@ -182,16 +208,20 @@ export function setupWorld(gameState: GameState) {
       curseOverlayEnabled = !curseOverlayEnabled;
       updateVignetteCurse(curseOverlayEnabled);
     }
-  });
-  window.addEventListener("keyup", (e) => {
+  };
+  window.addEventListener("keydown", handleKeyDown);
+  cleanupFns.push(() => window.removeEventListener("keydown", handleKeyDown));
+  const handleKeyUp = (e: KeyboardEvent) => {
     if (inputLocked) return;
     if (e.key === "w") keys.w = false;
     if (e.key === "a") keys.a = false;
     if (e.key === "s") keys.s = false;
     if (e.key === "d") keys.d = false;
-  });
+  };
+  window.addEventListener("keyup", handleKeyUp);
+  cleanupFns.push(() => window.removeEventListener("keyup", handleKeyUp));
 
-  window.addEventListener("click", () => {
+  const handleClick = () => {
     if (inputLocked) return;
     spawnFloatingText(
       `${Math.floor(Math.random() * 20) + 5}`,
@@ -199,42 +229,25 @@ export function setupWorld(gameState: GameState) {
       CONFIG.colors.cyan,
       Math.random() > 0.7
     );
-  });
+  };
+  window.addEventListener("click", handleClick);
+  cleanupFns.push(() => window.removeEventListener("click", handleClick));
 
-  gameState.on("state", (state) => {
+  const handleStateChange = (state: { isRunning: boolean; isPaused: boolean }) => {
     isRunning = state.isRunning;
     isPaused = state.isPaused;
-  });
+  };
+  gameState.on("state", handleStateChange);
+  cleanupFns.push(() => gameState.off("state", handleStateChange));
 
-  gameState.on("gameOver", () => {
+  const handleGameOver = () => {
     isRunning = false;
     isPaused = true;
     isGameOver = true;
     inputLocked = true;
-  });
-
-  const resetWorld = () => {
-    enemyManager.reset();
-    weaponSystem.reset();
-    xpManager.reset();
-    chestManager.reset();
-    isRunning = false;
-    isPaused = false;
-    isGameOver = false;
-    inputLocked = false;
-    lastCollisionFeedback = 0;
-    charGroup.position.set(0, 0, CONFIG.playerZ);
-    aimTarget.set(0, 0, CONFIG.playerZ - 30);
-    targetMesh.position.set(aimTarget.x, 0.05, aimTarget.z);
-    aimLine.geometry.setFromPoints([
-      new THREE.Vector3(charGroup.position.x, 2.5, charGroup.position.z),
-      new THREE.Vector3(aimTarget.x, 0.1, aimTarget.z),
-    ]);
   };
-
-  gameState.on("reset", () => {
-    resetWorld();
-  });
+  gameState.on("gameOver", handleGameOver);
+  cleanupFns.push(() => gameState.off("gameOver", handleGameOver));
 
   // --- ENTITY MANAGEMENT ---
   // Example: Move player with WASD
@@ -280,11 +293,14 @@ export function setupWorld(gameState: GameState) {
 
   // --- ANIMATION LOOP ---
   let lastTime = performance.now();
+  let animationFrameId: number | null = null;
+  let isDisposed = false;
   function animate(now: number) {
+    if (isDisposed) return;
     const delta = now - lastTime;
     lastTime = now;
 
-    requestAnimationFrame(animate);
+    animationFrameId = requestAnimationFrame(animate);
     gameState.tick(delta);
     updatePlayer();
     enemyManager.update(delta);
@@ -299,6 +315,29 @@ export function setupWorld(gameState: GameState) {
   }
   animate(lastTime);
 
+  const teardown = () => {
+    if (isDisposed) return;
+    isDisposed = true;
+
+    if (animationFrameId !== null) {
+      cancelAnimationFrame(animationFrameId);
+      animationFrameId = null;
+    }
+
+    enemyManager.reset();
+    weaponSystem.reset();
+    xpManager.reset();
+    chestManager.reset();
+
+    cleanupFns.forEach((fn) => fn());
+
+    renderer.domElement.remove();
+    composer.dispose();
+    renderer.dispose();
+    geometries.forEach((geometry) => geometry.dispose());
+    materials.forEach((material) => material.dispose());
+  };
+
   // Return objects for further use
-  return { scene, camera, renderer, composer, worldGroup, charGroup };
+  return { scene, camera, renderer, composer, worldGroup, charGroup, teardown };
 }

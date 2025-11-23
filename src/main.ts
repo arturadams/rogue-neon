@@ -37,4 +37,9 @@ const uiController = new UIController(gameState);
 uiController.initialize();
 
 // Initialize the game world (THREE.js scene, camera, renderer, etc.)
-setupWorld(gameState);
+let world = setupWorld(gameState);
+
+gameState.on("reset", () => {
+  world.teardown();
+  world = setupWorld(gameState);
+});
