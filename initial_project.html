@@ -264,12 +264,9 @@
         import { SYNERGIES } from './assets/synergies.js';
         import { PASSIVE_DB } from './assets/passives.js';
         import { ITEMS } from './assets/items.js';
+        import { createEngineState, useGameEngine } from './hooks/useGameEngine.js';
 
-        let gameState = 'MENU';
-        let wave = 1;
-        let frame = 0;
-        let gameSpeed = 1;
-        let pausedStateCache = 'MENU';
+        const engineState = createEngineState();
 
         // --- PLAYER STATE ---
         const player = {
@@ -360,42 +357,48 @@
             l.visible = false; aimLineGroup.add(l); aimLinePool.push(l);
         }
 
-        function animate() {
-            requestAnimationFrame(animate);
-            if (gameState === 'PLAYING') {
-                for(let i=0; i<gameSpeed; i++) gameTick();
-                updateAimGuide();
+        const gameEngine = useGameEngine({
+            state: engineState,
+            config: CONFIG,
+            player,
+            scene,
+            camera,
+            composer,
+            charGroup,
+            keys,
+            cursorWorldPos,
+            cursorMesh,
+            aimLinePool,
+            raycaster,
+            mouse,
+            groundPlane,
+            entities,
+            createNeonMesh,
+            removeEnemy,
+            removeProjectile,
+            helpers: {
+                updateHUD,
+                showFloatText,
+                castSpell,
+                takeDamage,
+                damageEnemy,
+                gainXpDrop,
+                gainXp,
+                spawnDrop,
+                showItemModal,
+                showEvolutionModal,
+                getClosestEnemy,
+                getClosestEnemyExcluding,
+                createExplosion,
+                spawnZone,
+                fireProj,
+                fireBeam,
+                drawChainBolt,
+                startChain,
+                startChainRecursive
             }
-            composer.render();
-        }
-        animate();
-
-        function updateAimGuide() {
-            cursorMesh.position.x = cursorWorldPos.x; cursorMesh.position.z = cursorWorldPos.z; cursorMesh.rotation.z += 0.05;
-            aimLinePool.forEach(l => l.visible = false);
-            let poolIdx = 0;
-            const start = charGroup.position.clone().add(new THREE.Vector3(0,3,0));
-            
-            player.activeSpells.forEach(s => {
-                const cfg = s.data.base;
-                if(!cfg) return;
-                let shots = (cfg.count || 1) + player.multiCast;
-                if(s.path === 'A' && s.data.id === 'w_01') shots *= 2; 
-                
-                const range = (cfg.range || 50) * player.rangeMult;
-                for(let i=0; i<shots; i++) {
-                    if(poolIdx >= aimLinePool.length) break;
-                    const dir = new THREE.Vector3().subVectors(cursorWorldPos, charGroup.position).normalize();
-                    if(i > 0) dir.applyAxisAngle(new THREE.Vector3(0,1,0), (i % 2 === 0 ? 1 : -1) * 0.1 * Math.ceil(i/2));
-                    const end = start.clone().add(dir.multiplyScalar(range));
-                    const pts = [start, end];
-                    aimLinePool[poolIdx].geometry.setFromPoints(pts);
-                    aimLinePool[poolIdx].material.color.setHex(s.data.color);
-                    aimLinePool[poolIdx].visible = true;
-                    poolIdx++;
-                }
-            });
-        }
+        });
+        gameEngine.animate();
 
         function takeDamage(amt) {
             if(player.items.includes("i_28")) {
@@ -403,331 +406,34 @@
                     createExplosion(e.mesh.position, 0xffaa00, 5);
                     damageEnemy(e, 9999);
                 });
-                return; 
+                return;
             }
 
             let actual = Math.max(1, amt - player.armor);
             player.hp -= actual; updateHUD();
             document.body.style.backgroundColor = '#550000';
             setTimeout(() => document.body.style.backgroundColor = CONFIG.colors.bg.toString(16), 50);
-            
+
             if(player.hp <= 0) {
                  if(player.revives > 0) {
                      player.revives--;
                      player.hp = player.maxHp * 0.5;
-                     player.invuln = 120; 
+                     player.invuln = 120;
                      showFloatText("REVIVED!", charGroup.position, 0x00ff00);
                      updateHUD();
                  } else {
-                     gameState = 'GAMEOVER'; 
-                     document.getElementById('gameover-modal').style.display = 'block'; 
-                     document.getElementById('final-wave').innerText = wave;
+                     engineState.gameState = 'GAMEOVER';
+                     document.getElementById('gameover-modal').style.display = 'block';
+                     document.getElementById('final-wave').innerText = engineState.wave;
                  }
             }
         }
         
         window.takeDamage = takeDamage;
 
-        function gameTick() {
-            frame++;
-            const dt = 1/60; 
-            let moveSpeed = 0.4 * player.moveSpeed;
-            if(player.items.includes("i_37")) moveSpeed = 0; 
-
-            if (keys.w) charGroup.position.z -= moveSpeed;
-            if (keys.s) charGroup.position.z += moveSpeed;
-            if (keys.a) charGroup.position.x -= moveSpeed;
-            if (keys.d) charGroup.position.x += moveSpeed;
-            charGroup.position.x = Math.max(-CONFIG.laneWidth/2, Math.min(CONFIG.laneWidth/2, charGroup.position.x));
-            charGroup.position.z = Math.max(-60, Math.min(CONFIG.endZone - 2, charGroup.position.z));
-
-            raycaster.setFromCamera(mouse, camera);
-            raycaster.ray.intersectPlane(groundPlane, cursorWorldPos);
-            charGroup.lookAt(cursorWorldPos.x, charGroup.position.y, cursorWorldPos.z);
-            
-            if(player.invuln > 0) player.invuln--;
-            if(player.invuln > 0 && frame % 4 === 0) charGroup.visible = !charGroup.visible;
-            else charGroup.visible = true;
-
-            if(player.hpRegen > 0 && frame % 60 === 0) {
-                player.hp = Math.min(player.maxHp, player.hp + player.hpRegen);
-                updateHUD();
-            }
-
-            updatePickups();
-            
-            let spawnRate = Math.max(10, 60 - (wave * 2 * player.curse)); 
-            if (wave <= 3) spawnRate = 40; 
-            if (frame % Math.floor(spawnRate) === 0) spawnEnemy();
-            
-            if (frame % 1200 === 0 && wave < CONFIG.maxWaves) { 
-                wave++; 
-                if(player.items.includes("i_07")) player.gold += player.interest;
-                updateHUD();
-                if(wave % 5 === 0) showFloatText("MINIBOSS INCOMING", new THREE.Vector3(0, 5, 0), 0xff0000); 
-                else showFloatText("WAVE " + wave, charGroup.position, 0xffaa00); 
-            }
-            
-            // WAVE PROGRESS BAR FIX
-            const progPct = ((frame % (1200 * CONFIG.maxWaves)) / (1200 * CONFIG.maxWaves)) * 100;
-            const waveProg = (frame % 1200) / 1200; // Per wave
-            // Using total progress
-            const totalProg = (wave / CONFIG.maxWaves) * 100 + (waveProg * (100/CONFIG.maxWaves));
-            document.getElementById('progress-fill').style.width = Math.min(100, totalProg) + '%';
-
-
-            player.activeSpells.forEach(spell => {
-                if (spell.cdTimer > 0) spell.cdTimer -= dt;
-                else if (castSpell(spell)) spell.cdTimer = spell.data.base.cd * player.cdMult;
-            });
-
-            updateEntities();
-        }
-
-        function spawnEnemy() {
-            const isBossWave = wave % 5 === 0;
-            let hp = 8 + (wave * 3 * player.curse);
-            let speed = 0.15 + (wave * 0.01);
-            let type = 'normal';
-            let color = CONFIG.colors.red;
-            let scale = 1.5;
-
-            if (wave <= 3) { hp = 10; speed = 0.2; } 
-
-            const r = Math.random();
-            if (r > 0.95 && wave > 3) { type = 'tank'; hp *= 4; speed *= 0.5; color = CONFIG.colors.orange; scale = 3; }
-            else if (r > 0.85 && wave > 3) { type = 'fast'; hp *= 0.5; speed *= 1.5; color = CONFIG.colors.pink; scale = 1.2; }
-
-            if (isBossWave && Math.random() > 0.95) { 
-                 type = 'boss'; hp *= 20; scale = 5; speed *= 0.4; color = CONFIG.colors.mythic;
-            }
-            
-            const geo = type === 'tank' ? new THREE.BoxGeometry(1,1,1) : new THREE.OctahedronGeometry(1);
-            const mesh = createNeonMesh(geo, color);
-            mesh.scale.set(scale, scale, scale);
-            mesh.position.set((Math.random() - 0.5) * (CONFIG.laneWidth - 4), scale, CONFIG.spawnZ);
-            scene.add(mesh);
-            const radius = scale * 0.9; 
-            entities.enemies.push({
-                mesh, hp, maxHp: hp, speed, alive: true, type, color, baseSpeed: speed, radius: radius
-            });
-        }
-
-        function updateEntities() {
-            for (let i = entities.enemies.length - 1; i >= 0; i--) {
-                const e = entities.enemies[i];
-                e.speedMod = 1; 
-                if(player.items.includes("i_19")) e.speedMod *= 0.9;
-                
-                e.mesh.position.z += e.baseSpeed * e.speedMod;
-                e.mesh.rotation.x += 0.05;
-                
-                if(player.invuln <= 0) {
-                    const distToPlayer = charGroup.position.distanceTo(e.mesh.position);
-                    if(distToPlayer < (2 + e.radius)) {
-                        takeDamage(10);
-                        if(player.items.includes("i_13")) damageEnemy(e, 50); 
-                        if(player.items.includes("i_14")) damageEnemy(e, 10);
-                        player.invuln = 60; 
-                        createExplosion(charGroup.position, 0xff0000, 5);
-                    }
-                }
-                if (e.mesh.position.z > CONFIG.endZone) {
-                    if(e.type === 'boss' || e.type === 'tank') takeDamage(20); 
-                    removeEnemy(i);
-                }
-            }
-
-            for (let i = entities.projectiles.length - 1; i >= 0; i--) {
-                const p = entities.projectiles[i];
-                p.age++;
-                
-                if(p.type !== 'void' && p.type !== 'wall' && p.type !== 'orbit' && p.type !== 'zone' && p.type !== 'decoy' && p.type !== 'cone') {
-                     if(p.age > (p.range/p.speed)) { removeProjectile(i); continue; }
-                     p.mesh.position.add(p.velocity);
-                } else if (p.type === 'zone' || p.type === 'void' || p.type === 'wall' || p.type === 'decoy') {
-                    if (p.age > p.duration * 60) { 
-                        if(p.spellRef && p.spellRef.id && p.spellRef.id.includes("collapse")) createExplosion(p.mesh.position, 0x8800ff, 10);
-                        removeProjectile(i); continue; 
-                    }
-                }
-
-                if(p.type === 'homing') {
-                    if(!p.target || !p.target.alive) p.target = getClosestEnemy(p.mesh.position);
-                    if(p.target) {
-                        const dir = new THREE.Vector3().subVectors(p.target.mesh.position, p.mesh.position).normalize();
-                        p.velocity.lerp(dir.multiplyScalar(p.speed), 0.15);
-                    }
-                } else if (p.type === 'zone') { 
-                    if (p.age % p.interval === 0) {
-                         for (const e of entities.enemies) {
-                            if (p.mesh.position.distanceTo(e.mesh.position) < p.radius + e.radius) {
-                                if(p.zoneType === 'void') {
-                                    damageEnemy(e, p.damage);
-                                    if(p.spellRef && p.spellRef.id.includes("event")) e.mesh.position.lerp(p.mesh.position, 0.2);
-                                    else e.mesh.position.lerp(p.mesh.position, 0.05);
-                                }
-                                else if (p.zoneType === 'time') {
-                                    e.speedMod = p.spellRef.data.slow || 0.4;
-                                    if(p.spellRef && p.spellRef.id.includes("burn")) damageEnemy(e, 2); 
-                                }
-                            }
-                        }
-                    }
-                    p.mesh.rotation.y += 0.1;
-                    continue; 
-                } else if (p.type === 'orbit') {
-                    p.angle += p.speed;
-                    p.mesh.position.x = charGroup.position.x + Math.cos(p.angle) * p.radius;
-                    p.mesh.position.z = charGroup.position.z + Math.sin(p.angle) * p.radius;
-                    for (const e of entities.enemies) {
-                         if (p.mesh.position.distanceTo(e.mesh.position) < (2 + e.radius)) {
-                             if(!e.lastOrbitHit || frame - e.lastOrbitHit > 30) {
-                                 damageEnemy(e, p.damage);
-                                 e.lastOrbitHit = frame;
-                                 createExplosion(e.mesh.position, 0xffffff, 3);
-                             }
-                         }
-                    }
-                    continue;
-                } else if (p.type === 'wall') {
-                    for(const e of entities.enemies) {
-                        if (Math.abs(e.mesh.position.z - p.mesh.position.z) < 2 && Math.abs(e.mesh.position.x - p.mesh.position.x) < p.width/2) {
-                            e.mesh.position.z = p.mesh.position.z - 2;
-                            if(frame%20===0) damageEnemy(e, 1);
-                        }
-                    }
-                    continue;
-                } else if (p.type === 'decoy') {
-                    for(const e of entities.enemies) {
-                        if(p.mesh.position.distanceTo(e.mesh.position) < 30) {
-                            e.mesh.lookAt(p.mesh.position); 
-                            e.mesh.position.lerp(p.mesh.position, 0.02);
-                        }
-                    }
-                    continue;
-                } else if (p.type === 'cone') {
-                    // Soundwave / Cone Logic
-                    if (p.age % 5 === 0) {
-                        // Update visual pulse
-                        p.mesh.scale.setScalar(1 + (p.age / 10) * 2); 
-                        p.mesh.material.opacity = 1 - (p.age/10);
-
-                        for(const e of entities.enemies) {
-                            const toEnemy = e.mesh.position.clone().sub(charGroup.position);
-                            const dist = toEnemy.length();
-                            if (dist < p.range) {
-                                // Cone Check
-                                const angle = p.velocity.clone().normalize().angleTo(toEnemy.normalize());
-                                if (angle < 0.6) { // ~35 degrees
-                                    damageEnemy(e, p.damage);
-                                    e.mesh.position.add(toEnemy.normalize().multiplyScalar(2)); // Pushback
-                                }
-                            }
-                        }
-                    }
-                    if(p.age > 10) removeProjectile(i);
-                    continue;
-                }
-
-                let hit = false;
-                for (const e of entities.enemies) {
-                    const dx = p.mesh.position.x - e.mesh.position.x;
-                    const dz = p.mesh.position.z - e.mesh.position.z;
-                    const dist = Math.sqrt(dx*dx + dz*dz);
-                    const hitDist = (e.radius || 1.5) + (p.width || 0.5);
-                    
-                    if (dist < hitDist) {
-                        if (p.type === 'wave') {
-                            if(!p.hitList.includes(e)) {
-                                damageEnemy(e, p.damage);
-                                e.mesh.position.z -= p.push;
-                                p.hitList.push(e);
-                            }
-                        } else {
-                            damageEnemy(e, p.damage);
-                            if (p.legendaryExplode) createExplosion(e.mesh.position, 0xffaa00, 10);
-                            createExplosion(p.mesh.position, p.color, 3);
-                            
-                            if(p.tags && p.tags.includes("split")) {
-                                fireProj({ ...p.spellRef.data, speed: p.speed, range: 50, damage: p.damage*0.5, type: 'projectile' }, p.mesh.position, p.velocity.clone().applyAxisAngle(new THREE.Vector3(0,1,0), 0.5).normalize(), p.damage*0.5);
-                                fireProj({ ...p.spellRef.data, speed: p.speed, range: 50, damage: p.damage*0.5, type: 'projectile' }, p.mesh.position, p.velocity.clone().applyAxisAngle(new THREE.Vector3(0,1,0), -0.5).normalize(), p.damage*0.5);
-                            }
-
-                            if(p.spellRef && p.spellRef.id.includes("neon_bolt") && player.items.includes("item_mirror_chip") && !p.ricocheted) {
-                                const next = getClosestEnemyExcluding(p.mesh.position, 50, [e]);
-                                if(next) {
-                                    p.velocity = new THREE.Vector3().subVectors(next.mesh.position, p.mesh.position).normalize().multiplyScalar(p.speed);
-                                    p.ricocheted = true;
-                                    continue; 
-                                }
-                            }
-
-                            // Plasma Lobber - Puddle on Impact
-                            if(p.spellRef && p.spellRef.data.base.puddle) {
-                                spawnZone(p.mesh.position, p.spellRef.data.base, p.spellRef);
-                            }
-
-                            if(!p.pierce) { hit = true; break; }
-                        }
-                    }
-                }
-                if(hit) removeProjectile(i);
-            }
-            
-            for(let i=entities.particles.length-1; i>=0; i--) {
-                const p = entities.particles[i];
-                p.mesh.position.add(p.vel);
-                p.life -= 0.05;
-                p.mesh.scale.setScalar(p.life);
-                if(p.life <= 0) { scene.remove(p.mesh); entities.particles.splice(i, 1); }
-            }
-        }
-
-        function updatePickups() {
-            for(let i=entities.orbs.length-1; i>=0; i--) {
-                const orb = entities.orbs[i];
-                const d = charGroup.position.distanceTo(orb.mesh.position);
-                const isMagnet = d < player.magnetRadius;
-                orb.mesh.position.lerp(charGroup.position, isMagnet ? 0.2 : 0.015);
-                if (d < 2) {
-                    if(orb.type === 'xp') gainXp(orb.val);
-                    else player.gold += orb.val;
-                    updateHUD();
-                    scene.remove(orb.mesh);
-                    entities.orbs.splice(i, 1);
-                } else if(!isMagnet) orb.mesh.position.y = 1 + Math.sin(frame*0.1 + i)*0.5;
-            }
-            
-            for(let i=entities.drops.length-1; i>=0; i--) {
-                const drop = entities.drops[i];
-                const d = charGroup.position.distanceTo(drop.mesh.position);
-                drop.mesh.position.lerp(charGroup.position, d < player.magnetRadius ? 0.1 : 0.005);
-                if (d < 3) {
-                    // FIX: Check synergy requirement (Level 5)
-                    if(drop.item.type === 'synergy') {
-                        // Must have weapon at Level 5
-                        const w = player.activeSpells.find(s => s.id === drop.item.weapon_id);
-                        if(w && w.level >= 5 && !w.isEvo) {
-                            showEvolutionModal(w, drop.item);
-                        } else {
-                            // Convert to gold if not applicable
-                            player.gold += 50; 
-                            showFloatText("+50 GOLD", charGroup.position, 0xffd700);
-                        }
-                    } else {
-                        showItemModal(drop.item);
-                    }
-                    scene.remove(drop.mesh);
-                    entities.drops.splice(i, 1);
-                }
-                drop.mesh.rotation.y += 0.05;
-            }
-        }
-
         // --- MODALS ---
         function showItemModal(item) {
-             gameState = 'PAUSED';
+             engineState.gameState = 'PAUSED';
              const modal = document.getElementById('item-modal');
              let rInfo = RARITY_WEIGHTS.find(r => r.id === item.rarity.toLowerCase());
              if(!rInfo) rInfo = RARITY_WEIGHTS[0];
@@ -744,7 +450,7 @@
         }
         
         function showEvolutionModal(weapon, synergyItem) {
-            gameState = 'PAUSED';
+            engineState.gameState = 'PAUSED';
             const modal = document.getElementById('levelup-modal');
             const container = document.getElementById('upgrade-cards');
             container.innerHTML = '';
@@ -783,7 +489,7 @@
              renderInventory();
              updateHUD();
              modal.style.display = 'none';
-             gameState = 'PLAYING';
+             engineState.gameState = 'PLAYING';
         };
 
         function evolveWeapon(weapon, choice) {
@@ -878,7 +584,7 @@
                             const dir = new THREE.Vector3().subVectors(cursorWorldPos, charGroup.position).normalize();
                             if(i > 0) dir.applyAxisAngle(new THREE.Vector3(0,1,0), (i % 2 === 0 ? 1 : -1) * 0.1 * Math.ceil(i/2));
                             fireProj(cfg, charGroup.position.clone().add(new THREE.Vector3(0,3,0)), dir, dmg, s.color);
-                        }, i * (80/gameSpeed)); 
+                        }, i * (80/engineState.gameSpeed));
                     }
                     return true;
                 }
@@ -1097,7 +803,7 @@
         };
 
         function showLevelUp() {
-            gameState = 'PAUSED';
+            engineState.gameState = 'PAUSED';
             const modal = document.getElementById('levelup-modal');
             const container = document.getElementById('upgrade-cards');
             container.innerHTML = '';
@@ -1160,7 +866,7 @@
         }
         
         // --- Standard Boilerplate Functions for Rendering/Helpers ---
-        window.closeModal = function() { document.getElementById('levelup-modal').style.display = 'none'; gameState = 'PLAYING'; }
+        window.closeModal = function() { document.getElementById('levelup-modal').style.display = 'none'; engineState.gameState = 'PLAYING'; }
         window.renderInventory = function() { 
             const pList = document.getElementById('passive-list'); pList.innerHTML = '';
             const pCounts = {}; player.passives.forEach(id => pCounts[id] = (pCounts[id] || 0) + 1);
@@ -1233,8 +939,16 @@
         window.addEventListener('mousemove', e => { mouse.x = (e.clientX/window.innerWidth)*2-1; mouse.y = -(e.clientY/window.innerHeight)*2+1; });
         window.addEventListener('resize', () => { camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); composer.setSize(window.innerWidth, window.innerHeight); });
 
+        window.setSpeed = function(speed) {
+            engineState.gameSpeed = speed;
+            document.querySelectorAll('.speed-btn').forEach(btn => {
+                const val = Number(btn.textContent.replace('x', ''));
+                btn.classList.toggle('active', val === speed);
+            });
+        };
+
         function showStarterSelection() {
-            gameState = 'PAUSED';
+            engineState.gameState = 'PAUSED';
             const modal = document.getElementById('starter-modal');
             const container = document.getElementById('starter-cards');
             container.innerHTML = '';
@@ -1257,7 +971,7 @@
                     document.getElementById('spell-dock').style.display = 'flex';
                     document.getElementById('inventory-panel').style.display = 'block';
                     document.getElementById('data-btn').style.display = 'block';
-                    gameState = 'PLAYING'; 
+                    engineState.gameState = 'PLAYING';
                 };
                 container.appendChild(card);
             });
@@ -1269,8 +983,8 @@
         };
         
         // Database
-        window.openDatabase = function() { 
-            pausedStateCache = gameState; gameState = 'PAUSED'; 
+        window.openDatabase = function() {
+            engineState.pausedStateCache = engineState.gameState; engineState.gameState = 'PAUSED';
             document.getElementById('database-modal').style.display = 'block';
             const db = document.getElementById('db-content'); db.innerHTML = '';
             // (Populate DB similar to previous code, omitted for brevity in final block but fully functional logic is implied)
@@ -1278,9 +992,9 @@
             PASSIVE_DB.forEach(p => db.innerHTML += `<div class="db-item"><div class="db-name">${p.icon} ${p.name}</div><div class="db-desc">${p.desc}</div></div>`);
             ITEMS.forEach(i => db.innerHTML += `<div class="db-item"><div class="db-name">🎁 ${i.name}</div><div class="db-desc">${i.effect}</div></div>`);
         };
-        window.closeDatabase = function() { 
-            document.getElementById('database-modal').style.display = 'none'; 
-            if(player.hp > 0) gameState = 'PLAYING'; 
+        window.closeDatabase = function() {
+            document.getElementById('database-modal').style.display = 'none';
+            if(player.hp > 0) engineState.gameState = 'PLAYING';
         };
         window.openPauseMenu = function() {
              // Similar logic for Pause Menu
