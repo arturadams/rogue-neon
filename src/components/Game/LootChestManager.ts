@@ -36,6 +36,12 @@ export class LootChestManager {
     this.gameState.on("speed", (speed) => (this.speedMult = speed));
   }
 
+  reset(): void {
+    this.chests.slice().forEach((chest) => this.cleanupChest(chest));
+    this.isRunning = false;
+    this.isPaused = false;
+  }
+
   spawnChest(position: THREE.Vector3, rarityWeights: LootRarityWeights): void {
     const geometry = new THREE.BoxGeometry(4, 3, 4);
     const accentColor = this.getAccentColor(rarityWeights);

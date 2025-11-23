@@ -1,4 +1,9 @@
-import { GameState, HudState, LevelChoice } from "../Game/GameState";
+import {
+  GameOverStats,
+  GameState,
+  HudState,
+  LevelChoice,
+} from "../Game/GameState";
 import { Weapon, Item } from "../../types";
 import { WEAPONS } from "../Game/Weapons";
 import { ITEMS } from "../Game/Items";
@@ -27,6 +32,11 @@ interface UIElements {
   itemDesc: HTMLElement | null;
   itemIcon: HTMLElement | null;
   itemIntegrate: HTMLButtonElement | null;
+  gameOverModal: HTMLElement | null;
+  finalWave: HTMLElement | null;
+  finalLevel: HTMLElement | null;
+  finalGold: HTMLElement | null;
+  rebootBtn: HTMLButtonElement | null;
   hpText: HTMLElement | null;
   hpBar: HTMLElement | null;
   xpBar: HTMLElement | null;
@@ -83,12 +93,17 @@ export class UIController {
     itemModal: null,
     itemTitle: null,
     itemRarity: null,
-    itemDesc: null,
-    itemIcon: null,
-    itemIntegrate: null,
-    hpText: null,
-    hpBar: null,
-    xpBar: null,
+      itemDesc: null,
+      itemIcon: null,
+      itemIntegrate: null,
+      gameOverModal: null,
+      finalWave: null,
+      finalLevel: null,
+      finalGold: null,
+      rebootBtn: null,
+      hpText: null,
+      hpBar: null,
+      xpBar: null,
     lvlText: null,
     waveText: null,
     maxWaveText: null,
@@ -143,6 +158,11 @@ export class UIController {
       itemDesc: document.getElementById("item-desc"),
       itemIcon: document.getElementById("item-icon-display"),
       itemIntegrate: document.querySelector("#item-modal .btn") as HTMLButtonElement | null,
+      gameOverModal: document.getElementById("gameover-modal"),
+      finalWave: document.getElementById("final-wave"),
+      finalLevel: document.getElementById("final-level"),
+      finalGold: document.getElementById("final-gold"),
+      rebootBtn: document.getElementById("reboot-btn") as HTMLButtonElement | null,
       hpText: document.getElementById("hp-text"),
       hpBar: document.getElementById("hp-bar"),
       xpBar: document.getElementById("xp-bar"),
@@ -207,6 +227,10 @@ export class UIController {
         this.markSpeedActive(speed);
       });
     });
+
+    this.ui.rebootBtn?.addEventListener("click", () => {
+      this.gameState.restartGame();
+    });
   }
 
   private bindUpgradeNavigation(): void {
@@ -237,6 +261,8 @@ export class UIController {
     this.gameState.on("item", (item) => this.showItemModal(item));
     this.gameState.on("state", (state) => this.updateRunButtons(state.isPaused));
     this.gameState.on("speed", (speed) => this.markSpeedActive(speed));
+    this.gameState.on("gameOver", (stats) => this.handleGameOver(stats));
+    this.gameState.on("reset", () => this.onGameReset());
   }
 
   private showHudPanels(): void {
@@ -252,6 +278,18 @@ export class UIController {
     if (this.ui.pauseBtn) {
       this.ui.pauseBtn.textContent = isPaused ? "UNPAUSE" : "PAUSE";
     }
+  }
+
+  private setControlsEnabled(enabled: boolean): void {
+    if (this.ui.startBtn) this.ui.startBtn.disabled = !enabled;
+    if (this.ui.pauseBtn) this.ui.pauseBtn.disabled = !enabled;
+    if (this.ui.rerollBtn) {
+      const hud = this.gameState.getHudState();
+      this.ui.rerollBtn.disabled = !enabled || !hud.isRunning || hud.rerolls <= 0;
+    }
+    this.ui.speedButtons?.forEach((btn) => {
+      btn.disabled = !enabled;
+    });
   }
 
   private renderStarterChoices(choices: Weapon[]): void {
@@ -351,6 +389,14 @@ export class UIController {
     if (this.ui.databaseModal) this.ui.databaseModal.style.display = "none";
   }
 
+  private showGameOverModal(): void {
+    if (this.ui.gameOverModal) this.ui.gameOverModal.style.display = "block";
+  }
+
+  private hideGameOverModal(): void {
+    if (this.ui.gameOverModal) this.ui.gameOverModal.style.display = "none";
+  }
+
   private populateDatabase(): void {
     if (!this.ui.databaseContent) return;
     const weaponSection = `
@@ -439,11 +485,37 @@ export class UIController {
     }
 
     if (this.ui.rerollBtn) {
+      const rerollDisabled = !hud.isRunning || hud.rerolls <= 0;
       this.ui.rerollBtn.textContent = `REROLL (${hud.rerolls})`;
-      this.ui.rerollBtn.disabled = hud.rerolls <= 0;
+      this.ui.rerollBtn.disabled = rerollDisabled;
     }
 
     this.showHudPanels();
+  }
+
+  private handleGameOver(stats: GameOverStats): void {
+    this.setControlsEnabled(false);
+    this.isLevelUpOpen = false;
+    this.levelSelectionIndex = 0;
+    if (this.ui.levelUpModal) this.ui.levelUpModal.style.display = "none";
+    this.hideItemModal();
+
+    if (this.ui.finalWave) this.ui.finalWave.textContent = `${stats.wave}`;
+    if (this.ui.finalLevel) this.ui.finalLevel.textContent = `${stats.level}`;
+    if (this.ui.finalGold) this.ui.finalGold.textContent = `${stats.gold}`;
+
+    this.showGameOverModal();
+  }
+
+  private onGameReset(): void {
+    this.hideGameOverModal();
+    this.setControlsEnabled(true);
+    this.showStartScreen();
+    this.markSpeedActive(this.gameState.getHudState().speed);
+    this.isLevelUpOpen = false;
+    this.levelSelectionIndex = 0;
+    if (this.ui.levelUpModal) this.ui.levelUpModal.style.display = "none";
+    this.hideItemModal();
   }
 
   private markSpeedActive(speed: number): void {

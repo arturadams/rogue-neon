@@ -150,7 +150,7 @@ export function setupWorld(gameState: GameState) {
 
   const gameCanvas = document.getElementById("game-canvas");
   const updateAimFromPointer = (event: MouseEvent) => {
-    if (!gameCanvas) return;
+    if (!gameCanvas || inputLocked) return;
     const rect = renderer.domElement.getBoundingClientRect();
     pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -169,8 +169,11 @@ export function setupWorld(gameState: GameState) {
   let curseOverlayEnabled = false;
   let isRunning = false;
   let isPaused = false;
+  let isGameOver = false;
+  let inputLocked = false;
   let lastCollisionFeedback = 0;
   window.addEventListener("keydown", (e) => {
+    if (inputLocked) return;
     if (e.key === "w") keys.w = true;
     if (e.key === "a") keys.a = true;
     if (e.key === "s") keys.s = true;
@@ -181,6 +184,7 @@ export function setupWorld(gameState: GameState) {
     }
   });
   window.addEventListener("keyup", (e) => {
+    if (inputLocked) return;
     if (e.key === "w") keys.w = false;
     if (e.key === "a") keys.a = false;
     if (e.key === "s") keys.s = false;
@@ -188,6 +192,7 @@ export function setupWorld(gameState: GameState) {
   });
 
   window.addEventListener("click", () => {
+    if (inputLocked) return;
     spawnFloatingText(
       `${Math.floor(Math.random() * 20) + 5}`,
       charGroup.position,
@@ -201,10 +206,40 @@ export function setupWorld(gameState: GameState) {
     isPaused = state.isPaused;
   });
 
+  gameState.on("gameOver", () => {
+    isRunning = false;
+    isPaused = true;
+    isGameOver = true;
+    inputLocked = true;
+  });
+
+  const resetWorld = () => {
+    enemyManager.reset();
+    weaponSystem.reset();
+    xpManager.reset();
+    chestManager.reset();
+    isRunning = false;
+    isPaused = false;
+    isGameOver = false;
+    inputLocked = false;
+    lastCollisionFeedback = 0;
+    charGroup.position.set(0, 0, CONFIG.playerZ);
+    aimTarget.set(0, 0, CONFIG.playerZ - 30);
+    targetMesh.position.set(aimTarget.x, 0.05, aimTarget.z);
+    aimLine.geometry.setFromPoints([
+      new THREE.Vector3(charGroup.position.x, 2.5, charGroup.position.z),
+      new THREE.Vector3(aimTarget.x, 0.1, aimTarget.z),
+    ]);
+  };
+
+  gameState.on("reset", () => {
+    resetWorld();
+  });
+
   // --- ENTITY MANAGEMENT ---
   // Example: Move player with WASD
   function updatePlayer() {
-    if (!isRunning || isPaused) return;
+    if (!isRunning || isPaused || isGameOver) return;
 
     let speed = 0.5;
     if (keys.w) charGroup.position.z -= speed;
