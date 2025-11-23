@@ -33,6 +33,8 @@ export type Enemy = {
   kind: EnemyKind;
   dropProfile: DropProfile;
   radius: number;
+  maxHp: number;
+  hp: number;
 };
 
 type SpawnEffect = {
@@ -106,17 +108,31 @@ export class EnemyManager {
 
     const speed = 0.02 + this.currentWave * 0.0025;
     const radius = this.getEnemySize(kind) * 0.55;
+    const maxHp =
+      this.getEnemyBaseHealth(kind) * this.getWaveHealthMultiplier(this.currentWave);
     this.enemies.push({
       mesh,
       speed,
       kind,
       dropProfile: DROP_PROFILES[kind],
       radius,
+      maxHp,
+      hp: maxHp,
     });
   }
 
   getEnemies(): Enemy[] {
     return this.enemies;
+  }
+
+  applyDamage(enemy: Enemy, amount: number, multiplier = 1): boolean {
+    if (!this.enemies.includes(enemy)) return false;
+    const damage = Math.max(0, amount * multiplier);
+    enemy.hp -= damage;
+    if (enemy.hp > 0) return false;
+
+    this.defeatEnemy(enemy);
+    return true;
   }
 
   defeatEnemy(enemy: Enemy): void {
@@ -157,6 +173,17 @@ export class EnemyManager {
     if (kind === "boss") return 6;
     if (kind === "miniboss") return 4;
     return 3;
+  }
+
+  private getEnemyBaseHealth(kind: EnemyKind): number {
+    if (kind === "boss") return 600;
+    if (kind === "miniboss") return 250;
+    return 120;
+  }
+
+  private getWaveHealthMultiplier(wave: number): number {
+    const growthPerWave = 0.12;
+    return 1 + Math.max(0, wave - 1) * growthPerWave;
   }
 
   private getContactDamage(kind: EnemyKind): number {
