@@ -92,7 +92,7 @@ function createStatsPanel() {
   waveText.innerHTML = 'WAVE: <span id="wave-text" class="text-light">1</span> / <span id="max-wave-text">20</span>';
   panel.appendChild(waveText);
 
-  const goldText = createDivWithClasses('', 'small-text text-gold mt-4');
+  const goldText = createDivWithClasses('', 'small-text text-gold mt-1');
   goldText.innerHTML = 'GOLD: <span id="gold-text">0</span>';
   panel.appendChild(goldText);
 

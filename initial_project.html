@@ -4,7 +4,432 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Neon Taj: Rogue Protocol</title>
-    <link rel="stylesheet" href="./styles/layout.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        neonBg: '#050510',
+                        neonAccent: '#00ffff',
+                        neonWarning: '#ffee00',
+                        neonGold: '#ffd700'
+                    },
+                    fontFamily: {
+                        orbitron: ['Orbitron', 'sans-serif']
+                    },
+                    boxShadow: {
+                        'glow-cyan': '0 0 15px rgba(0, 255, 255, 0.3)',
+                        'glow-cyan-strong': '0 0 50px rgba(0, 255, 255, 0.2)',
+                        'glow-gold': '0 0 20px rgba(255, 170, 0, 0.5)',
+                        'glow-magenta': '0 0 20px #ff00ff'
+                    },
+                    keyframes: {
+                        floatUp: {
+                            '0%': { opacity: '1', transform: 'translateY(0) scale(1)' },
+                            '50%': { transform: 'translateY(-30px) scale(1.2)' },
+                            '100%': { opacity: '0', transform: 'translateY(-60px) scale(1)' }
+                        },
+                        floatIcon: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-10px)' }
+                        },
+                        pulseNew: {
+                            '0%': { boxShadow: '0 0 5px #00ffff' },
+                            '50%': { boxShadow: '0 0 20px #00ffff' },
+                            '100%': { boxShadow: '0 0 5px #00ffff' }
+                        }
+                    },
+                    animation: {
+                        'float-up': 'floatUp 0.8s forwards',
+                        'float-icon': 'floatIcon 2s infinite ease-in-out',
+                        'pulse-new': 'pulseNew 1s infinite'
+                    }
+                }
+            }
+        };
+    </script>
+    <style type="text/tailwindcss">
+        @layer base {
+            body {
+                @apply m-0 overflow-hidden bg-neonBg font-orbitron select-none text-white;
+            }
+
+            canvas {
+                @apply cursor-none;
+            }
+        }
+
+        @layer components {
+            .text-accent {
+                @apply text-neonAccent;
+            }
+
+            .text-muted {
+                @apply text-[#888];
+            }
+
+            .text-warning {
+                @apply text-neonWarning;
+            }
+
+            .text-gold {
+                @apply text-neonGold;
+            }
+
+            .text-light {
+                @apply text-white;
+            }
+
+            .small-text {
+                @apply text-[12px];
+            }
+
+            #ui-layer {
+                @apply absolute inset-0 pointer-events-none;
+            }
+
+            .hud-panel {
+                @apply absolute pointer-events-auto;
+            }
+
+            #progress-container {
+                @apply absolute top-5 left-1/2 h-5 w-[40%] -translate-x-1/2 bg-[#111] border-2 border-[#333] pointer-events-none;
+            }
+
+            #progress-fill {
+                @apply h-full w-0 transition-[width] duration-500;
+                background: linear-gradient(90deg, #00ffff, #ff00ff);
+            }
+
+            .boss-marker {
+                @apply absolute -top-[5px] h-[30px] w-[4px] -translate-x-1/2 bg-[#ff0055] z-[2];
+            }
+
+            .boss-marker.final {
+                @apply w-2 bg-[#ff0000];
+            }
+
+            #progress-label {
+                @apply absolute top-[25px] w-full text-center text-[#888] text-[10px];
+            }
+
+            #speed-controls {
+                @apply top-5 right-[250px] flex gap-[5px];
+            }
+
+            .speed-btn {
+                @apply bg-[#111] border border-neonAccent text-neonAccent px-2 py-1 text-[12px] cursor-pointer font-orbitron transition-colors;
+            }
+
+            .speed-btn.active {
+                @apply bg-neonAccent text-black font-bold;
+            }
+
+            .data-btn {
+                @apply top-5 right-5 bg-[#111] border border-neonAccent text-neonAccent px-2 py-1 text-[10px] cursor-pointer font-orbitron;
+            }
+
+            #stats-panel {
+                @apply top-5 left-5 text-neonAccent drop-shadow-[0_0_5px_#00ffff];
+            }
+
+            .bar-container {
+                @apply w-[250px] h-3 bg-[#111] border border-[#333] mb-2 relative overflow-hidden;
+                clip-path: polygon(0 0, 100% 0, 95% 100%, 0% 100%);
+            }
+
+            .bar-fill {
+                @apply h-full w-full transition-[width] duration-200;
+            }
+
+            #hp-bar {
+                background: linear-gradient(90deg, #ff0055, #ff5555);
+                box-shadow: 0 0 10px #ff0055;
+            }
+
+            #xp-bar {
+                background: linear-gradient(90deg, #ffee00, #ffffaa);
+                box-shadow: 0 0 10px #ffee00;
+            }
+
+            .stat-label {
+                @apply mb-[2px] flex justify-between text-[14px] font-bold;
+            }
+
+            #spell-dock {
+                @apply bottom-5 left-1/2 flex -translate-x-1/2 items-end gap-3;
+            }
+
+            .spell-slot {
+                @apply relative flex h-16 w-16 flex-col items-center justify-center border-2 border-[#333] bg-[rgba(0,10,20,0.9)] text-[#555] text-center text-[10px] transition;
+            }
+
+            .spell-slot.active {
+                @apply border-neonAccent text-white shadow-glow-cyan;
+            }
+
+            .spell-slot.evo {
+                @apply border-[#ffaa00] text-[#ffaa00] shadow-glow-gold;
+            }
+
+            .spell-slot.synergy-active {
+                @apply border-neonAccent shadow-[0_0_15px_#00ffff,0_0_10px_#00ffff_inset] border-[3px];
+            }
+
+            .spell-slot.locked {
+                @apply border-dashed opacity-50;
+            }
+
+            .spell-icon {
+                @apply mb-1 text-2xl;
+            }
+
+            .spell-lvl {
+                @apply absolute right-[2px] top-[2px] text-[10px] font-bold text-neonWarning;
+            }
+
+            .cooldown-overlay {
+                @apply absolute bottom-0 left-0 w-full bg-[rgba(0,0,0,0.6)] transition-[height] duration-100 ease-linear;
+                height: 0%;
+            }
+
+            #inventory-panel {
+                @apply top-[60px] right-5 w-[200px] text-right text-[#ff00ff];
+            }
+
+            .inventory-label {
+                @apply mb-[5px] text-right text-[10px] text-[#888];
+            }
+
+            .inv-item {
+                @apply mb-1 flex items-center justify-end gap-2 rounded-[4px_0_0_4px] border-r-[3px] bg-[rgba(0,0,0,0.8)] px-[6px] py-[6px] pr-2 text-[11px];
+            }
+
+            .inv-icon {
+                @apply w-5 text-center text-[16px];
+            }
+
+            .inv-count {
+                @apply rounded-sm bg-[#333] px-1 text-[12px] font-bold text-white;
+            }
+
+            .rarity-common {
+                @apply border-[#ddd] text-[#ddd];
+            }
+
+            .rarity-uncommon {
+                @apply border-[#00ff00] text-[#00ff00];
+            }
+
+            .rarity-rare {
+                @apply border-[#0088ff] text-[#0088ff];
+            }
+
+            .rarity-mythic {
+                @apply border-[#aa00ff] text-[#aa00ff];
+            }
+
+            .rarity-legendary {
+                @apply border-[#ffaa00] text-[#ffaa00] drop-shadow-[0_0_5px_#ffaa00];
+            }
+
+            .rarity-cursed {
+                @apply border-[#ff0000] text-[#ff0000] drop-shadow-[0_0_5px_#ff0000];
+            }
+
+            .rarity-new {
+                @apply border-neonAccent text-neonAccent shadow-[0_0_10px_rgba(0,255,255,0.5)] animate-pulse-new;
+            }
+
+            .modal {
+                @apply absolute left-1/2 top-1/2 z-[100] w-[800px] max-h-[90vh] max-w-[95%] -translate-x-1/2 -translate-y-1/2 border-2 border-neonAccent bg-[rgba(5,5,16,0.98)] p-[30px] text-center shadow-glow-cyan-strong pointer-events-auto hidden overflow-y-auto;
+            }
+
+            .modal-header {
+                @apply mb-[15px] flex items-center justify-between border-b-2 border-[#333] pb-[10px];
+            }
+
+            .modal-close {
+                @apply cursor-pointer border border-[#555] bg-transparent text-[#888];
+            }
+
+            .modal-subtitle {
+                @apply text-[12px] text-[#888];
+            }
+
+            .card-container {
+                @apply mt-5 flex flex-wrap items-start justify-center gap-[15px];
+            }
+
+            .upgrade-card {
+                @apply relative flex min-h-[220px] w-[200px] cursor-pointer flex-col items-center gap-2 overflow-hidden border-2 border-[#444] bg-[#111] p-[15px] text-[13px] text-[#ddd] transition-transform duration-200;
+            }
+
+            .upgrade-card:hover {
+                @apply -translate-y-1 shadow-[0_0_30px_rgba(0,0,0,0.5)] border-white;
+            }
+
+            .upgrade-card.evolution {
+                @apply border-[#ffaa00];
+                background: radial-gradient(circle, #221100, #000);
+            }
+
+            .upgrade-card.new-weapon {
+                @apply border-neonAccent;
+                background: radial-gradient(circle, #002222, #000);
+            }
+
+            .db-grid {
+                @apply grid grid-cols-3 gap-[10px] pr-[10px];
+            }
+
+            .db-section {
+                @apply col-span-3 mt-[15px] border-b border-[#333] pb-[5px] font-bold tracking-[2px] text-neonAccent;
+            }
+
+            .db-item {
+                @apply flex flex-col gap-1 bg-[#111] p-[10px] text-left text-[11px] border border-[#333];
+            }
+
+            .db-name {
+                @apply font-bold text-white;
+            }
+
+            .db-desc {
+                @apply text-[#888];
+            }
+
+            .stat-row {
+                @apply flex justify-between border-b border-[#222] py-[5px] text-[12px] text-[#ccc];
+            }
+
+            .stat-val {
+                @apply font-bold text-neonAccent;
+            }
+
+            .ban-btn {
+                @apply absolute right-[5px] top-[5px] z-10 flex h-5 w-5 items-center justify-center rounded-[3px] border border-[#ff0000] bg-[#330000] text-[10px] leading-[18px] text-[#ff0000] cursor-pointer;
+            }
+
+            .reroll-container {
+                @apply mt-5 flex justify-center gap-5;
+            }
+
+            .reroll-btn {
+                @apply bg-[#111] border border-neonAccent px-5 py-2 text-[14px] font-orbitron text-neonAccent transition duration-200 cursor-pointer;
+            }
+
+            .reroll-btn:disabled {
+                @apply cursor-not-allowed border-[#555] bg-[#111] text-[#555] opacity-50;
+            }
+
+            #item-modal {
+                @apply border-[4px] shadow-[0_0_100px_rgba(0,0,0,0.8)] w-[500px];
+            }
+
+            #item-icon-display {
+                @apply my-5 text-[80px] animate-float-icon;
+            }
+
+            #item-title {
+                @apply mb-1 text-[32px] font-black uppercase;
+            }
+
+            #item-rarity {
+                @apply mb-5 text-[14px] font-bold tracking-[4px] uppercase;
+            }
+
+            #item-desc {
+                @apply mb-[30px] text-[16px] leading-[1.5] text-[#ccc];
+            }
+
+            .btn {
+                @apply mt-5 px-10 py-[15px] bg-neonAccent text-black font-black font-orbitron text-[18px] cursor-pointer transition duration-200;
+                clip-path: polygon(10% 0, 100% 0, 100% 80%, 90% 100%, 0 100%, 0 20%);
+            }
+
+            .btn:hover {
+                @apply scale-105 bg-white shadow-[0_0_20px_#00ffff];
+            }
+
+            .btn-secondary {
+                @apply px-[30px] py-[10px] text-[14px] text-[#888];
+            }
+
+            #scanline {
+                @apply absolute inset-0 bg-[linear-gradient(to_bottom,_transparent_50%,_rgba(0,0,0,0.2)_50%)] bg-[length:100%_4px] opacity-30 pointer-events-none z-[50];
+            }
+
+            #vignette-curse {
+                @apply absolute inset-0 bg-[radial-gradient(circle,_transparent_30%,_#000_90%)] pointer-events-none z-40 hidden;
+            }
+
+            .floating-text {
+                @apply absolute font-bold whitespace-nowrap pointer-events-none animate-float-up;
+                text-shadow: 2px 2px 0px #000;
+            }
+
+            .dmg-crit {
+                @apply text-[24px] text-[#ff0000] drop-shadow-[0_0_5px_#ff0000] z-20;
+            }
+
+            .dmg-norm {
+                @apply text-[16px] text-white z-10;
+            }
+
+            .screen {
+                @apply absolute inset-0 z-[200] flex flex-col items-center justify-center bg-[rgba(0,0,0,0.9)] pointer-events-auto;
+            }
+
+            .start-title {
+                @apply m-0 text-[70px] leading-[0.8] text-neonAccent drop-shadow-[0_0_20px_#00ffff];
+            }
+
+            .start-subtitle {
+                @apply text-[24px] tracking-[5px] text-[#ff00ff];
+            }
+
+            .start-info {
+                @apply mt-[30px] text-center text-[14px] text-[#888];
+            }
+
+            .start-actions {
+                @apply flex flex-col items-center;
+            }
+
+            .start-actions .btn + .btn {
+                @apply mt-[10px];
+            }
+
+            #go-title {
+                @apply text-[#ff0055];
+            }
+
+            #database-modal {
+                @apply hidden w-[900px] max-w-[95%] text-left z-[300];
+            }
+
+            #gameover-modal {
+                @apply hidden;
+            }
+
+            #starter-modal {
+                @apply hidden;
+            }
+
+            #levelup-modal {
+                @apply hidden;
+            }
+
+            #start-screen {
+                @apply flex;
+            }
+        }
+    </style>
     <script type="importmap">
         {
             "imports": {
