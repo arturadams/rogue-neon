@@ -258,145 +258,18 @@
         import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
         import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
         import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-
-        // --- CONFIG ---
-        const CONFIG = {
-            spawnZ: -120, playerZ: 40, endZone: 50, laneWidth: 24, maxWaves: 20,
-            colors: {
-                cyan: 0x00ffff, pink: 0xff00ff, orange: 0xffaa00, red: 0xff0055, bg: 0x050510, green: 0x00ff00, yellow: 0xffee00,
-                common: 0xdddddd, uncommon: 0x00ff00, rare: 0x0088ff, mythic: 0xaa00ff, legendary: 0xffaa00, cursed: 0xff0000
-            }
-        };
-        
-        const RARITY_WEIGHTS = [
-            { id: 'common', weight: 50, mult: 1.0, color: CONFIG.colors.common, name: "Common" },
-            { id: 'uncommon', weight: 25, mult: 1.3, color: CONFIG.colors.uncommon, name: "Uncommon" },
-            { id: 'rare', weight: 12, mult: 1.7, color: CONFIG.colors.rare, name: "Rare" },
-            { id: 'mythic', weight: 6, mult: 2.5, color: CONFIG.colors.mythic, name: "Mythic" },
-            { id: 'legendary', weight: 4, mult: 4.0, color: CONFIG.colors.legendary, name: "Legendary" },
-            { id: 'cursed', weight: 3, mult: 5.0, color: CONFIG.colors.cursed, name: "Cursed" }
-        ];
+        import { CONFIG } from './configs/config.js';
+        import { RARITY_WEIGHTS } from './configs/rarities.js';
+        import { WEAPONS } from './assets/weapons.js';
+        import { SYNERGIES } from './assets/synergies.js';
+        import { PASSIVE_DB } from './assets/passives.js';
+        import { ITEMS } from './assets/items.js';
 
         let gameState = 'MENU';
         let wave = 1;
         let frame = 0;
         let gameSpeed = 1;
         let pausedStateCache = 'MENU';
-        
-        // --- 24 WEAPONS DB ---
-        const WEAPONS = [
-            { id: "w_01", name: "VX-1 Auto-Pistol", type: "Kinetic", scaling: "Attack Speed", icon: "🔫", base: { dmg: 10, cd: 0.4, range: 200, speed: 2.0, count: 1 }, color: 0xffaa00, desc: "Rapid fire single target." },
-            { id: "w_02", name: "Street Sweeper", type: "Kinetic", scaling: "Range", icon: "🕸️", base: { dmg: 8, cd: 1.2, range: 100, speed: 1.5, count: 5, spread: 0.5 }, color: 0xffaa00, desc: "Short range cone spread." },
-            { id: "w_03", name: "Tungsten Nailgun", type: "Kinetic", scaling: "Duration", icon: "🔨", base: { dmg: 5, cd: 0.1, range: 150, speed: 2.5, count: 1, slow: 0.1 }, color: 0xaaaaaa, desc: "High ammo, applies slow." },
-            { id: "w_04", name: "Heavy Bolter", type: "Kinetic", scaling: "Damage", icon: "🔩", base: { dmg: 35, cd: 1.0, range: 250, speed: 1.0, count: 1, knockback: 5 }, color: 0xff5500, desc: "Slow fire, high damage." },
-            { id: "w_05", name: "Ripper Sawblade", type: "Kinetic", scaling: "Bounce", icon: "⚙️", base: { dmg: 15, cd: 1.5, range: 180, speed: 0.8, count: 1, pierce: 99 }, color: 0xdddddd, desc: "Bounces off walls." },
-            { id: "w_06", name: "Smart-Lok Rifle", type: "Kinetic", scaling: "Tech", icon: "📡", base: { dmg: 12, cd: 0.6, range: 300, speed: 2.0, count: 1, homing: true }, color: 0x00ff00, desc: "Auto-locks onto targets." },
-            
-            { id: "w_07", name: "Neon Laser", type: "Energy", scaling: "Duration", icon: "🔦", base: { dmg: 5, cd: 0.1, range: 250, width: 0.5, beam: true }, color: 0x00ffff, desc: "Continuous beam." },
-            { id: "w_08", name: "Tesla Arc-Caster", type: "Energy", scaling: "Chain", icon: "⚡", base: { dmg: 20, cd: 1.2, range: 150, chain: 2 }, color: 0xffff00, desc: "Zaps target and jumps." },
-            { id: "w_09", name: "Plasma Lobber", type: "Energy", scaling: "Area", icon: "🧪", base: { dmg: 30, cd: 2.0, range: 120, area: 10, puddle: true }, color: 0x00ff00, desc: "Arcing shot leaves acid." },
-            { id: "w_10", name: "Hard-Light Prism", type: "Energy", scaling: "Reflect", icon: "💎", base: { dmg: 10, cd: 5.0, duration: 10, deploy: "prism" }, color: 0xff00ff, desc: "Stationary prism shoots beams." },
-            { id: "w_11", name: "Gamma Ray", type: "Energy", scaling: "Tech", icon: "☢️", base: { dmg: 8, cd: 0.2, range: 80, cone: true }, color: 0x00ff00, desc: "Short range radiation cone." },
-            { id: "w_12", name: "Void Beam", type: "Energy", scaling: "Duration", icon: "🌌", base: { dmg: 50, cd: 3.0, range: 200, width: 2, beam: true, tick: true }, color: 0x8800ff, desc: "Dark beam ticks damage." },
-            
-            { id: "w_13", name: "Cluster Rocket", type: "Explosive", scaling: "Area", icon: "🚀", base: { dmg: 40, cd: 2.5, range: 200, speed: 1.2, explode: 10 }, color: 0xff5555, desc: "Rocket explodes on impact." },
-            { id: "w_14", name: "Grav-Bomb", type: "Explosive", scaling: "Force", icon: "⚫", base: { dmg: 5, cd: 4.0, range: 150, explode: 15, pull: true }, color: 0x440044, desc: "Pulls enemies together." },
-            { id: "w_15", name: "Mine Layer", type: "Explosive", scaling: "Duration", icon: "💣", base: { dmg: 60, cd: 2.0, deploy: "mine" }, color: 0xaa5500, desc: "Drops mines behind player." },
-            { id: "w_16", name: "Flak Cannon", type: "Explosive", scaling: "Area", icon: "💥", base: { dmg: 15, cd: 1.5, range: 120, count: 4, spread: 0.8, explode: 5 }, color: 0xffaa55, desc: "Shotgun-style explosive." },
-            { id: "w_17", name: "Napalm Thrower", type: "Explosive", scaling: "Elemental", icon: "🔥", base: { dmg: 4, cd: 0.05, range: 60, particles: true }, color: 0xffaa00, desc: "Stream of fire." },
-            { id: "w_18", name: "Railgun Sniper", type: "Explosive", scaling: "Crit", icon: "🔫", base: { dmg: 150, cd: 4.0, range: 400, beam: true, pierce: 99, width: 0.2 }, color: 0xff0000, desc: "Infinite pierce line." },
-            
-            { id: "w_19", name: "Glitch Emitter", type: "Exotic", scaling: "Luck", icon: "👾", base: { dmg: 10, cd: 0.5, range: 150, random: true }, color: 0xff00ff, desc: "Randomizes enemy speed." },
-            { id: "w_20", name: "Bit-Coin Blaster", type: "Exotic", scaling: "Gold", icon: "🪙", base: { dmg: 5, cd: 0.2, range: 150, gold_hit: true }, color: 0xffd700, desc: "Weak dmg, generates gold." },
-            { id: "w_21", name: "Drone Carrier", type: "Exotic", scaling: "Summon", icon: "🛸", base: { dmg: 10, cd: 5.0, summon: "drone", count: 2 }, color: 0x00aaff, desc: "Spawns drones." },
-            { id: "w_22", name: "Vampire Disc", type: "Exotic", scaling: "Lifesteal", icon: "💿", base: { dmg: 25, cd: 2.0, range: 200, boomerang: true }, color: 0xff0055, desc: "Thrown disc returns." },
-            { id: "w_23", name: "Bass-Cannon", type: "Exotic", scaling: "Area", icon: "🔊", base: { dmg: 30, cd: 1.5, range: 100, cone: true, push: 10 }, color: 0xaa00ff, desc: "Visible sound waves." },
-            { id: "w_24", name: "Null Pointer", type: "Exotic", scaling: "None", icon: "🚫", base: { dmg: 1, cd: 1.0, range: 200, delete_chance: 0.03 }, color: 0x000000, desc: "Chance to delete enemy." }
-        ];
-
-        // --- SYNERGIES JSON ---
-        const SYNERGIES = [
-          { weapon_id: "w_01", choices: [ { path: "A", name: "Dual Wield", desc: "2x Fire Rate", max: "Gun Kata" }, { path: "B", name: "Sniper Mod", desc: "High Dmg, Slow", max: "Railgun" } ] },
-          { weapon_id: "w_02", choices: [ { path: "A", name: "Auto-Shotty", desc: "Full Auto", max: "Drum Mag" }, { path: "B", name: "Dragon's Breath", desc: "Fire Dmg", max: "Inferno" } ] },
-          { weapon_id: "w_03", choices: [ { path: "A", name: "Rail Driver", desc: "Giant Nails", max: "Impale" }, { path: "B", name: "Nail Bomb", desc: "Exploding Nails", max: "Cluster Nails" } ] },
-          { weapon_id: "w_04", choices: [ { path: "A", name: "Siege Mode", desc: "Stationary Buff", max: "Fortress" }, { path: "B", name: "Ricochet", desc: "Bouncing Bolts", max: "Pinball" } ] },
-          { weapon_id: "w_05", choices: [ { path: "A", name: "Boomerang", desc: "Returns", max: "Juggler" }, { path: "B", name: "Ground Saw", desc: "Floor Trap", max: "Earthquake" } ] },
-          { weapon_id: "w_06", choices: [ { path: "A", name: "Swarm Missiles", desc: "Slow Homing", max: "Hive Mind" }, { path: "B", name: "Orbital Laser", desc: "Sat Strike", max: "Glassing Beam" } ] },
-          { weapon_id: "w_07", choices: [ { path: "A", name: "Disco Mode", desc: "4 Rotating Lasers", max: "Rave" }, { path: "B", name: "Death Star", desc: "Massive Blast", max: "Planet Cracker" } ] },
-          { weapon_id: "w_08", choices: [ { path: "A", name: "Thunderstorm", desc: "Global Strikes", max: "Zeus Wrath" }, { path: "B", name: "Static Field", desc: "Aura Dmg", max: "EMP" } ] },
-          { weapon_id: "w_09", choices: [ { path: "A", name: "Bouncing Slime", desc: "Bounces", max: "Living Slime" }, { path: "B", name: "Gas Cloud", desc: "AoE Cloud", max: "Combustion" } ] },
-          { weapon_id: "w_10", choices: [ { path: "A", name: "Mirror Room", desc: "2 Prisms", max: "Laser Grid" }, { path: "B", name: "Prism Bomb", desc: "Explodes", max: "Black Diamond" } ] },
-          { weapon_id: "w_11", choices: [ { path: "A", name: "Focused Beam", desc: "Infinite Range", max: "Cancer" }, { path: "B", name: "Gamma Pulse", desc: "Radial Wave", max: "Fallout" } ] },
-          { weapon_id: "w_12", choices: [ { path: "A", name: "Life Drain", desc: "Heals Player", max: "Soul Jar" }, { path: "B", name: "Dimensional Rift", desc: "Teleports Enemies", max: "Banished" } ] },
-          { weapon_id: "w_13", choices: [ { path: "A", name: "Carpet Bomber", desc: "Rain Rockets", max: "Nuke" }, { path: "B", name: "Bunker Buster", desc: "Heavy Drill", max: "Seismic Charge" } ] },
-          { weapon_id: "w_14", choices: [ { path: "A", name: "White Hole", desc: "Pushback", max: "Shockwave" }, { path: "B", name: "Orbit", desc: "Capture Enemies", max: "Accretion Disk" } ] },
-          { weapon_id: "w_15", choices: [ { path: "A", name: "Spider Mines", desc: "Chase Enemies", max: "Widowmaker" }, { path: "B", name: "Claymore", desc: "Cone Blast", max: "Front Towards Enemy" } ] },
-          { weapon_id: "w_16", choices: [ { path: "A", name: "Air Defense", desc: "Anti-Air", max: "No Fly Zone" }, { path: "B", name: "Confetti", desc: "High Stun", max: "Party Time" } ] },
-          { weapon_id: "w_17", choices: [ { path: "A", name: "Blue Flame", desc: "High Dmg", max: "Plasma Torch" }, { path: "B", name: "Oil Slick", desc: "Slows", max: "Chain Reaction" } ] },
-          { weapon_id: "w_18", choices: [ { path: "A", name: "Ricochet Rail", desc: "Bounces", max: "Geometry" }, { path: "B", name: "Anti-Materiel", desc: "Wall Pierce", max: "X-Ray" } ] },
-          { weapon_id: "w_19", choices: [ { path: "A", name: "Virus Upload", desc: "Infection", max: "Botnet" }, { path: "B", name: "Source Code", desc: "Terrain Glitch", max: "The Void" } ] },
-          { weapon_id: "w_20", choices: [ { path: "A", name: "Pay-to-Win", desc: "Spend Gold for Dmg", max: "Whale" }, { path: "B", name: "HODL", desc: "Dmg per Gold", max: "Diamond Hands" } ] },
-          { weapon_id: "w_21", choices: [ { path: "A", name: "Swarm", desc: "50 Tiny Drones", max: "Locusts" }, { path: "B", name: "Mothership", desc: "1 Big Drone", max: "Independence" } ] },
-          { weapon_id: "w_22", choices: [ { path: "A", name: "Blood Bank", desc: "Heal -> Shield", max: "Hemomancy" }, { path: "B", name: "Sawblade", desc: "Dmg Ramps", max: "Eviscerate" } ] },
-          { weapon_id: "w_23", choices: [ { path: "A", name: "Dubstep Gun", desc: "Beat Fire", max: "The Drop" }, { path: "B", name: "Brown Note", desc: "Fear", max: "Resonance Cascade" } ] },
-          { weapon_id: "w_24", choices: [ { path: "A", name: "Zero-Day", desc: "Debuffs", max: "Admin Access" }, { path: "B", name: "Infinite Loop", desc: "Time Trap", max: "Stack Overflow" } ] }
-        ];
-
-        const PASSIVE_DB = [
-            { id: "voltage_up", name: "Voltage Up", icon: "⚡", desc: "Global Damage", apply: (p, mult) => p.damageMult += (0.15 * mult) },
-            { id: "overclock", name: "Overclock", icon: "⏩", desc: "Cooldown Reduction", apply: (p, mult) => p.cdMult *= (1 - (0.1 * Math.sqrt(mult))) }, 
-            { id: "router_matrix", name: "Router", icon: "📡", desc: "Projectile Speed", apply: (p, mult) => p.speedMult += (0.1 * mult) },
-            { id: "antivirus_core", name: "Antivirus", icon: "🛡️", desc: "Max HP", apply: (p, mult) => { p.maxHp += 30 * mult; p.hp += 30 * mult; } },
-            { id: "data_magnet", name: "Data Magnet", icon: "🧲", desc: "Pickup Range", apply: (p, mult) => p.magnetRadius += (5 * mult) },
-            { id: "critical_subroutine", name: "Crit Sub", icon: "🎯", desc: "Crit Chance", apply: (p, mult) => { p.critChance += (0.05 * mult); } },
-            { id: "backup_shields", name: "Backup Shield", icon: "🧱", desc: "Damage Reduction", apply: (p, mult) => p.armor += 1 * mult },
-            { id: "flux_converter", name: "Flux Convert", icon: "🩸", desc: "Lifesteal", apply: (p, mult) => p.lifesteal += 0.002 * mult },
-            { id: "fortune_kernel", name: "Fortune Kernel", icon: "🎲", desc: "Luck", apply: (p, mult) => p.luck += 1 * mult },
-            { id: "system_hazard", name: "System Hazard", icon: "☠️", desc: "+Curse (XP/Spawns)", apply: (p, mult) => { p.curse += 0.1 * mult; p.xpMult += 0.15 * mult; } }
-        ];
-
-        const ITEMS = [
-            { id: "i_01", name: "Espresso Shot", rarity: "common", icon: "☕", effect: "+10% Move Speed" },
-            { id: "i_02", name: "Dumbbell", rarity: "common", icon: "🏋️", effect: "+10 Base Damage" },
-            { id: "i_03", name: "Scope", rarity: "common", icon: "🔭", effect: "+15% Range" },
-            { id: "i_04", name: "Extended Mag", rarity: "common", icon: "🔋", effect: "+20% Duration" },
-            { id: "i_05", name: "Thick Skin", rarity: "common", icon: "🦏", effect: "-5 Damage Taken" },
-            { id: "i_06", name: "Magnet", rarity: "common", icon: "🧲", effect: "+30% Pickup Range" },
-            { id: "i_07", name: "Piggy Bank", rarity: "common", icon: "🐖", effect: "+1 Interest on Gold per wave" },
-            { id: "i_08", name: "Band-Aid", rarity: "common", icon: "🩹", effect: "+1 HP Regen/sec" },
-            { id: "i_09", name: "Energy Drink", rarity: "common", icon: "🥤", effect: "+5% Haste" },
-            { id: "i_10", name: "LED Strip", rarity: "common", icon: "💡", effect: "Projectiles glow (Light radius)" },
-            { id: "i_11", name: "Rubber Ball", rarity: "uncommon", icon: "🎾", effect: "+1 Bounce" },
-            { id: "i_12", name: "Vampire Fangs", rarity: "uncommon", icon: "🧛", effect: "Heal 1HP per 100 dmg dealt" },
-            { id: "i_13", "name": "Ghost Pepper", rarity: "uncommon", icon: "🌶️", effect: "Deal fire dmg on contact" },
-            { id: "i_14", "name": "Mirror Shield", rarity: "uncommon", icon: "🛡️", effect: "Reflect 50% dmg back to attacker" },
-            { id: "i_15", "name": "Recycling Bin", rarity: "uncommon", icon: "♻️", effect: "Rerolls cost 50% less" },
-            { id: "i_16", "name": "Battery Pack", rarity: "uncommon", icon: "🔋", effect: "-15% Item Cooldowns" },
-            { id: "i_17", "name": "Target HUD", rarity: "uncommon", icon: "🎯", effect: "Show enemy HP bars + 10% Crit" },
-            { id: "i_18", "name": "Splitter", rarity: "uncommon", icon: "✂️", effect: "Split shot on hit" },
-            { id: "i_19", "name": "Hourglass", rarity: "uncommon", icon: "⏳", effect: "Enemies are 10% slower" },
-            { id: "i_20", "name": "Lucky Clover", rarity: "uncommon", icon: "🍀", effect: "+20 Luck" },
-            { id: "i_21", "name": "Glass Cannon", rarity: "rare", icon: "🍷", effect: "3x Damage, Max HP = 1" },
-            { id: "i_22", "name": "Executioner Hood", rarity: "rare", icon: "💀", effect: "Kill enemies under 15% HP" },
-            { id: "i_23", "name": "Explosive Tips", rarity: "rare", icon: "🧨", effect: "All shots explode on impact" },
-            { id: "i_24", "name": "Berserker Helm", rarity: "rare", icon: "👹", effect: "+1% Dmg for every 1% missing HP" },
-            { id: "i_25", "name": "Chaos Emerald", rarity: "rare", icon: "💎", effect: "Switch element every 10s" },
-            { id: "i_26", "name": "The Investment", rarity: "rare", icon: "📈", effect: "-50% Dmg now, +10% per wave (Infinite)" },
-            { id: "i_27", "name": "Second Heart", rarity: "rare", icon: "❤️", effect: "Revive once with 50% HP" },
-            { id: "i_28", "name": "Smart Bomb", rarity: "rare", icon: "💣", effect: "Taking dmg clears screen (60s CD)" },
-            { id: "i_29", "name": "Holo-Decoy", rarity: "rare", icon: "👻", effect: "Spawns decoy that attracts fire" },
-            { id: "i_30", "name": "Time Dilator", rarity: "rare", icon: "🐌", effect: "Enemy projectiles move 50% slower" },
-            { id: "i_31", "name": "The Printer", rarity: "legendary", icon: "🖨️", effect: "Duplicate your highest lvl weapon" },
-            { id: "i_32", "name": "God Mode", rarity: "legendary", icon: "👑", effect: "Invincible for 2s after kill" },
-            { id: "i_33", "name": "Black Hole", rarity: "legendary", icon: "⚫", effect: "Boss death sucks all XP to player" },
-            { id: "i_34", "name": "Infinite Ammo", rarity: "legendary", icon: "♾️", effect: "-80% Cooldowns" },
-            { id: "i_35", "name": "Midas Touch", rarity: "legendary", icon: "✋", effect: "Enemies turn to gold (Insta-kill + money)" },
-            { id: "i_36", "name": "Cursed Eye", rarity: "cursed", icon: "👁️", effect: "+100% Crit, Blind (Dark Screen)" },
-            { id: "i_37", "name": "Heavy Shackles", rarity: "cursed", icon: "⛓️", effect: "Can't move, +200% Range & Armor" },
-            { id: "i_38", "name": "Pacifist Chip", rarity: "cursed", icon: "☮️", effect: "You deal 0 dmg. Pets deal 1000% dmg." },
-            { id: "i_39", "name": "Debt", rarity: "cursed", icon: "💸", effect: "-1000 Gold start, +100 Luck" },
-            { id: "i_40", "name": "Glitch God", rarity: "cursed", icon: "👾", effect: "Randomize all weapons every 10s" }
-        ];
 
         // --- PLAYER STATE ---
         const player = {
