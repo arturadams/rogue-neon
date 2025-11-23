@@ -204,12 +204,15 @@ export function useGameEngine({
       const p = entities.projectiles[i];
       p.age++;
 
-      if (p.type !== 'void' && p.type !== 'wall' && p.type !== 'orbit' && p.type !== 'zone' && p.type !== 'decoy' && p.type !== 'cone') {
+      const staticTypes = ['void', 'wall', 'orbit', 'zone', 'decoy', 'cone', 'drone', 'chain'];
+      const isKinetic = !staticTypes.includes(p.type);
+
+      if (isKinetic) {
         if (p.age > p.range / p.speed) {
           removeProjectile(i);
           continue;
         }
-        p.mesh.position.add(p.velocity);
+        if (p.velocity) p.mesh.position.add(p.velocity);
       } else if (p.type === 'zone' || p.type === 'void' || p.type === 'wall' || p.type === 'decoy') {
         if (p.age > p.duration * 60) {
           if (p.spellRef && p.spellRef.id && p.spellRef.id.includes('collapse')) createExplosion(p.mesh.position, 0x8800ff, 10);
