@@ -49,6 +49,7 @@ export function setupWorld(gameState: GameState) {
 
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
+  let rendererRect = renderer.domElement.getBoundingClientRect();
   const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   const aimTarget = new THREE.Vector3(0, 0, CONFIG.playerZ - 30);
   const geometries = new Set<THREE.BufferGeometry>();
@@ -75,9 +76,10 @@ export function setupWorld(gameState: GameState) {
   bloomPass.strength = 1.2;
   bloomPass.radius = 0.4;
   bloomPass.threshold = 0.15;
+  const outputPass = new OutputPass();
   composer.addPass(new RenderPass(scene, camera));
   composer.addPass(bloomPass);
-  composer.addPass(new OutputPass());
+  composer.addPass(outputPass);
 
   // --- FX OVERLAYS & TEXT ---
   initScanline();
@@ -176,9 +178,9 @@ export function setupWorld(gameState: GameState) {
   const gameCanvas = document.getElementById("game-canvas");
   const updateAimFromPointer = (event: MouseEvent) => {
     if (!gameCanvas || inputLocked) return;
-    const rect = renderer.domElement.getBoundingClientRect();
-    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    pointer.x = ((event.clientX - rendererRect.left) / rendererRect.width) * 2 - 1;
+    pointer.y =
+      -((event.clientY - rendererRect.top) / rendererRect.height) * 2 + 1;
     raycaster.setFromCamera(pointer, camera);
     const hit = new THREE.Vector3();
     if (raycaster.ray.intersectPlane(groundPlane, hit)) {
@@ -189,6 +191,25 @@ export function setupWorld(gameState: GameState) {
   };
   gameCanvas?.addEventListener("mousemove", updateAimFromPointer);
   cleanupFns.push(() => gameCanvas?.removeEventListener("mousemove", updateAimFromPointer));
+
+  const handleResize = () => {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+
+    renderer.setSize(width, height);
+    composer.setSize(width, height);
+    bloomPass.setSize(width, height);
+    if (typeof (outputPass as any).setSize === "function") {
+      (outputPass as any).setSize(width, height);
+    }
+
+    rendererRect = renderer.domElement.getBoundingClientRect();
+  };
+  window.addEventListener("resize", handleResize);
+  cleanupFns.push(() => window.removeEventListener("resize", handleResize));
 
   // --- PLAYER CONTROLS ---
   const keys = { w: false, a: false, s: false, d: false };
