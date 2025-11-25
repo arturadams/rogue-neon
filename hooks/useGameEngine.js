@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { createAimSystem } from './systems/aimSystem.js';
+import { createPickupSystem } from './systems/pickupSystem.js';
 
 export function createEngineState(initial = {}) {
   return {
@@ -52,73 +54,15 @@ export function useGameEngine({
     startChain,
     startChainRecursive
   } = helpers;
-
-  function updateAimGuide() {
-    cursorMesh.position.x = cursorWorldPos.x;
-    cursorMesh.position.z = cursorWorldPos.z;
-    cursorMesh.rotation.z += 0.05;
-    aimLinePool.forEach(l => (l.visible = false));
-    let poolIdx = 0;
-    const start = charGroup.position.clone().add(new THREE.Vector3(0, 3, 0));
-
-    player.activeSpells.forEach(s => {
-      const cfg = s.data.base;
-      if (!cfg) return;
-      let shots = (cfg.count || 1) + player.multiCast;
-      if (s.path === 'A' && s.data.id === 'w_01') shots *= 2;
-
-      const range = (cfg.range || 50) * player.rangeMult;
-      for (let i = 0; i < shots; i++) {
-        if (poolIdx >= aimLinePool.length) break;
-        const dir = new THREE.Vector3().subVectors(cursorWorldPos, charGroup.position).normalize();
-        if (i > 0) dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), (i % 2 === 0 ? 1 : -1) * 0.1 * Math.ceil(i / 2));
-        const end = start.clone().add(dir.multiplyScalar(range));
-        const pts = [start, end];
-        aimLinePool[poolIdx].geometry.setFromPoints(pts);
-        aimLinePool[poolIdx].material.color.setHex(s.data.color);
-        aimLinePool[poolIdx].visible = true;
-        poolIdx++;
-      }
-    });
-  }
-
-  function updatePickups() {
-    for (let i = entities.orbs.length - 1; i >= 0; i--) {
-      const orb = entities.orbs[i];
-      const d = charGroup.position.distanceTo(orb.mesh.position);
-      const isMagnet = d < player.magnetRadius;
-      orb.mesh.position.lerp(charGroup.position, isMagnet ? 0.2 : 0.015);
-      if (d < 2) {
-        if (orb.type === 'xp') gainXp(orb.val);
-        else player.gold += orb.val;
-        updateHUD();
-        scene.remove(orb.mesh);
-        entities.orbs.splice(i, 1);
-      } else if (!isMagnet) orb.mesh.position.y = 1 + Math.sin(state.frame * 0.1 + i) * 0.5;
-    }
-
-    for (let i = entities.drops.length - 1; i >= 0; i--) {
-      const drop = entities.drops[i];
-      const d = charGroup.position.distanceTo(drop.mesh.position);
-      drop.mesh.position.lerp(charGroup.position, d < player.magnetRadius ? 0.1 : 0.005);
-      if (d < 3) {
-        if (drop.item.type === 'synergy') {
-          const w = player.activeSpells.find(s => s.id === drop.item.weapon_id);
-          if (w && w.level >= 5 && !w.isEvo) {
-            showEvolutionModal(w, drop.item);
-          } else {
-            player.gold += 50;
-            showFloatText('+50 GOLD', charGroup.position, 0xffd700);
-          }
-        } else {
-          showItemModal(drop.item);
-        }
-        scene.remove(drop.mesh);
-        entities.drops.splice(i, 1);
-      }
-      drop.mesh.rotation.y += 0.05;
-    }
-  }
+  const updateAimGuide = createAimSystem({ player, cursorWorldPos, cursorMesh, aimLinePool, charGroup });
+  const updatePickups = createPickupSystem({
+    player,
+    entities,
+    charGroup,
+    scene,
+    state,
+    helpers: { gainXp, showEvolutionModal, showItemModal, showFloatText, updateHUD }
+  });
 
   function spawnEnemy() {
     const isBossWave = state.wave % 5 === 0;

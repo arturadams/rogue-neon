@@ -1,9 +1,5 @@
 import { buildUi } from './components/uiLayout.js';
 import * as THREE from 'three';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { CONFIG } from './configs/config.js';
 import { RARITY_WEIGHTS } from './configs/rarities.js';
 import { WEAPONS } from './assets/weapons.js';
@@ -11,79 +7,25 @@ import { SYNERGIES } from './assets/synergies.js';
 import { PASSIVE_DB } from './assets/passives.js';
 import { ITEMS } from './assets/items.js';
 import { createEngineState, useGameEngine } from './hooks/useGameEngine.js';
+import { createSceneContext, buildWorld, buildCharacter } from './engine/sceneFactory.js';
+import { createPlayerState } from './engine/playerFactory.js';
+import { createNeonMesh, createProjectileGeometry } from './engine/geometryFactory.js';
+import { createAimLinePool, createCursorMesh } from './engine/aimFactory.js';
+import { registerInputHandlers } from './engine/inputHandlers.js';
 
 buildUi();
 
 const engineState = createEngineState();
-
-// --- PLAYER STATE ---
-const player = {
-    hp: 100, maxHp: 100, level: 1, xp: 0, maxXp: 50,
-    damageMult: 1, cdMult: 1, speedMult: 1, xpMult: 1, 
-    critChance: 0.05, critMult: 2.0, 
-    multiCast: 0, magnetRadius: 10,
-    armor: 0, lifesteal: 0, luck: 1, curse: 1,
-    gold: 0, interest: 0, hpRegen: 0, moveSpeed: 1.0, flatDmg: 0,
-    rangeMult: 1.0, durationMult: 1.0, revives: 0,
-    maxWeapons: 4,
-    rerolls: 2, bans: 1, banList: [], 
-    activeSpells: [], 
-    passives: [], // store IDs
-    items: [], // store IDs
-    invuln: 0
-};
+const player = createPlayerState();
 
 // --- SCENE SETUP ---
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(CONFIG.colors.bg);
-scene.fog = new THREE.FogExp2(CONFIG.colors.bg, 0.008);
-
-const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(0, 45, CONFIG.playerZ + 25);
-camera.lookAt(0, 0, -30); 
-
-const renderer = new THREE.WebGLRenderer({ antialias: false });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const { scene, camera, renderer, composer } = createSceneContext(CONFIG);
 document.body.appendChild(renderer.domElement);
-
-const composer = new EffectComposer(renderer);
-const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
-bloomPass.strength = 1.2; bloomPass.radius = 0.4; bloomPass.threshold = 0.15;
-composer.addPass(new RenderPass(scene, camera));
-composer.addPass(bloomPass);
-composer.addPass(new OutputPass());
+buildWorld(scene, CONFIG);
+const charGroup = buildCharacter(scene, CONFIG);
 
 // --- ASSETS ---
-// Use a static material but create new Geometries for dynamic scaling
-const matGlass = new THREE.MeshPhysicalMaterial({ color: 0x101025, metalness: 0.9, roughness: 0.1, transparent: true, opacity: 0.8, transmission: 0.2 });
-
-// Optimization: Reusable box geometry for projectiles if possible, but scaling issues. 
-// Using specific create function.
-function createNeonMesh(geometry, color) {
-    const m = new THREE.Mesh(geometry, matGlass);
-    const e = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: 0.8 }));
-    m.add(e);
-    return m;
-}
-
-// OPTIMIZATION: Global geometry for basic projectiles to reduce allocation
-const projGeo = new THREE.BoxGeometry(0.5, 0.5, 1);
-
-// --- WORLD ---
-const worldGroup = new THREE.Group();
-scene.add(worldGroup);
-const floor = new THREE.GridHelper(400, 40, 0x330033, 0x080815); floor.position.z = -50; worldGroup.add(floor);
-const laneL = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1, 300), new THREE.MeshBasicMaterial({color: CONFIG.colors.cyan}));
-laneL.position.set(-CONFIG.laneWidth/2 - 1, 0, -50); worldGroup.add(laneL);
-const laneR = laneL.clone(); laneR.position.set(CONFIG.laneWidth/2 + 1, 0, -50); worldGroup.add(laneR);
-
-// --- PLAYER ---
-const charGroup = new THREE.Group();
-charGroup.position.set(0, 0, CONFIG.playerZ);
-const body = new THREE.Mesh(new THREE.ConeGeometry(2, 5, 4), new THREE.MeshBasicMaterial({color: CONFIG.colors.cyan, wireframe: true}));
-body.position.y = 2.5; body.rotation.y = Math.PI/4; charGroup.add(body);
-scene.add(charGroup);
+const projGeo = createProjectileGeometry();
 
 // --- LOGIC ---
 const entities = { enemies: [], projectiles: [], particles: [], orbs: [], drops: [] };
@@ -94,16 +36,12 @@ let cursorWorldPos = new THREE.Vector3(0,0,0);
 const keys = { w: false, a: false, s: false, d: false };
 
 // CURSOR
-const cursorMesh = new THREE.Mesh(new THREE.RingGeometry(1.2, 1.4, 32), new THREE.MeshBasicMaterial({color: 0x00ffff, side: THREE.DoubleSide}));
-cursorMesh.rotation.x = -Math.PI/2; cursorMesh.position.y = 0.2; scene.add(cursorMesh);
+const cursorMesh = createCursorMesh();
+scene.add(cursorMesh);
 
 // AIM LINES
-const aimLineGroup = new THREE.Group(); scene.add(aimLineGroup);
-const aimLinePool = [];
-for(let i=0; i<50; i++) {
-    const l = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.15}));
-    l.visible = false; aimLineGroup.add(l); aimLinePool.push(l);
-}
+const { aimLineGroup, aimLinePool } = createAimLinePool();
+scene.add(aimLineGroup);
 
 const gameEngine = useGameEngine({
     state: engineState,
@@ -682,10 +620,7 @@ function removeEnemy(i) { scene.remove(entities.enemies[i].mesh); entities.enemi
 function removeProjectile(i) { scene.remove(entities.projectiles[i].mesh); entities.projectiles.splice(i,1); }
 
 // Input & Init
-window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
-window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
-window.addEventListener('mousemove', e => { mouse.x = (e.clientX/window.innerWidth)*2-1; mouse.y = -(e.clientY/window.innerHeight)*2+1; });
-window.addEventListener('resize', () => { camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); composer.setSize(window.innerWidth, window.innerHeight); });
+registerInputHandlers({ camera, renderer, composer, keys, mouse });
 
 window.setSpeed = function(speed) {
     engineState.gameSpeed = speed;
