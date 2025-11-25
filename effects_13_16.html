@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Weapon Systems - Explosive</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #050505; font-family: 'Courier New', Courier, monospace; }
+        #canvas-container { width: 100vw; height: 100vh; }
+        #ui {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            background: rgba(0,0,0,0.8);
+            padding: 10px;
+            border-radius: 8px;
+            pointer-events: none;
+            width: 90%;
+            overflow-x: auto;
+            justify-content: center;
+        }
+        .weapon-card {
+            pointer-events: auto;
+            border: 1px solid #333;
+            background: #1a1a1a;
+            color: #888;
+            padding: 8px;
+            min-width: 110px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .weapon-card:hover { background: #2a2a2a; color: #fff; }
+        .weapon-card.active {
+            border-color: #ff5555;
+            background: #2a1010;
+            color: #fff;
+            box-shadow: 0 0 15px rgba(255, 80, 80, 0.3);
+        }
+        .icon { font-size: 20px; display: block; margin-bottom: 5px; }
+        .name { font-size: 11px; font-weight: bold; }
+        .stats { font-size: 9px; margin-top: 4px; opacity: 0.7; }
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            opacity: 0.7;
+        }
+        #crosshair::before, #crosshair::after { content: ''; position: absolute; background: rgba(255, 255, 255, 0.8); }
+        #crosshair::before { top: 9px; left: 0; width: 20px; height: 2px; }
+        #crosshair::after { top: 0; left: 9px; width: 2px; height: 20px; }
+    </style>
+</head>
+<body>
+    <div id="crosshair"></div>
+    <div id="canvas-container"></div>
+    <div id="ui"></div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+        // --- CONFIGURATION ---
+        const WEAPONS = [
+            // Reduced explosion radius for Rocket (8 -> 5)
+            { id: "w_13", name: "Cluster Rocket", type: "Projectile", icon: "🚀", base: { dmg: 40, cd: 1.0, range: 100, speed: 35, explode: 5, trail: true }, color: 0xff5555, desc: "Big boom." },
+            // Grav Bomb now handled by specific GravSystem, radius 12 to look huge
+            { id: "w_14", name: "Grav-Bomb", type: "Grav", icon: "⚫", base: { dmg: 5, cd: 2.0, range: 80, speed: 15, explode: 12, pull: true }, color: 0xaa00aa, desc: "Singularity." },
+            { id: "w_15", name: "Mine Layer", type: "Mine", icon: "💣", base: { dmg: 60, cd: 0.5, duration: 10, range: 0, explode: 6 }, color: 0xff8800, desc: "Drops mines." },
+            // Reduced explosion for Flak (3 -> 2)
+            { id: "w_16", name: "Flak Cannon", type: "Projectile", icon: "💥", base: { dmg: 15, cd: 0.8, range: 50, speed: 60, count: 6, spread: 0.2, explode: 2 }, color: 0xffaa55, desc: "Explosive spread." },
+        ];
+
+        let currentWeaponIndex = 0, lastFireTime = 0, isMouseDown = false;
+        
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050505);
+        scene.fog = new THREE.FogExp2(0x050505, 0.02);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 25, 20); 
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.toneMapping = THREE.ReinhardToneMapping;
+        container.appendChild(renderer.domElement);
+
+        // --- FX ---
+        const renderScene = new RenderPass(scene, camera);
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.8, 0.3, 0.5);
+        const composer = new EffectComposer(renderer);
+        composer.addPass(renderScene);
+        composer.addPass(bloomPass);
+        composer.addPass(new OutputPass());
+
+        scene.add(new THREE.AmbientLight(0x404040));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        dirLight.position.set(10, 20, 10);
+        scene.add(dirLight);
+
+        const gridHelper = new THREE.GridHelper(100, 50, 0x222222, 0x111111);
+        scene.add(gridHelper);
+        const planeGeo = new THREE.PlaneGeometry(200, 200);
+        const planeMat = new THREE.MeshBasicMaterial({ visible: false });
+        const floorMesh = new THREE.Mesh(planeGeo, planeMat);
+        floorMesh.rotation.x = -Math.PI / 2;
+        scene.add(floorMesh);
+
+        const walls = [];
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.2 });
+        const backWall = new THREE.Mesh(new THREE.BoxGeometry(60, 5, 2), wallMat);
+        backWall.position.set(0, 2.5, -30);
+        scene.add(backWall);
+        walls.push(backWall);
+
+        const targets = [];
+        const targetGeo = new THREE.BoxGeometry(2, 3, 2);
+        const targetMat = new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.2 });
+        for(let i=0; i<10; i++) {
+            const t = new THREE.Mesh(targetGeo, targetMat.clone());
+            t.position.set((Math.random()-0.5)*40, 1.5, (Math.random()-0.5)*30);
+            t.userData = { id: i, velocity: new THREE.Vector3(), mass: 1.0 };
+            scene.add(t);
+            targets.push(t);
+        }
+
+        const gunMesh = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 2.5), new THREE.MeshStandardMaterial({ color: 0x883333 }));
+        gunMesh.position.set(0, 1.5, 0);
+        scene.add(gunMesh);
+        const muzzleOffset = new THREE.Vector3(0, 0, -1.5); 
+
+        // --- SYSTEMS ---
+
+        // 1. GRAV SYSTEM (Black Hole Effect)
+        class GravSystem {
+            constructor(scene, sparkSys) {
+                this.scene = scene;
+                this.sparkSys = sparkSys;
+                this.bullets = Array(20).fill().map(() => ({ active: false, vel: new THREE.Vector3(), life: 0 }));
+                this.singularities = Array(10).fill().map(() => ({ active: false, pos: new THREE.Vector3(), life: 0, maxLife: 2.0, range: 0 }));
+                
+                this.dummy = new THREE.Object3D();
+
+                // A. PROJECTILE MESH (Event Horizon Sphere)
+                const sphereGeo = new THREE.IcosahedronGeometry(0.5, 2);
+                const sphereMat = new THREE.ShaderMaterial({
+                    uniforms: {},
+                    vertexShader: `
+                        varying vec3 vNormal;
+                        void main() {
+                            vNormal = normalize(normalMatrix * normal);
+                            gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+                        }
+                    `,
+                    fragmentShader: `
+                        varying vec3 vNormal;
+                        void main() {
+                            float intensity = pow(0.7 - dot(vNormal, vec3(0, 0, 1.0)), 2.0);
+                            vec3 glow = vec3(0.6, 0.0, 0.8) * intensity * 3.0; // Purple rim
+                            gl_FragColor = vec4(vec3(0.0) + glow, 1.0); // Black core
+                        }
+                    `
+                });
+                this.projMesh = new THREE.InstancedMesh(sphereGeo, sphereMat, 20);
+                this.projMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+                scene.add(this.projMesh);
+
+                // B. SINGULARITY MESH (Explosion)
+                // A larger black sphere for the hole
+                const holeGeo = new THREE.SphereGeometry(1, 32, 32);
+                const holeMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+                this.holeMesh = new THREE.InstancedMesh(holeGeo, holeMat, 10);
+                this.holeMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+                scene.add(this.holeMesh);
+
+                // Initialize
+                for(let i=0; i<20; i++) {
+                    this.dummy.scale.set(0,0,0);
+                    this.dummy.updateMatrix();
+                    this.projMesh.setMatrixAt(i, this.dummy.matrix);
+                }
+                for(let i=0; i<10; i++) {
+                    this.holeMesh.setMatrixAt(i, this.dummy.matrix);
+                }
+            }
+
+            fire(origin, dir, w) {
+                const idx = this.bullets.findIndex(b => !b.active);
+                if(idx === -1) return;
+                const b = this.bullets[idx];
+                b.active = true; 
+                b.life = 5.0; // Long life
+                b.props = w.base;
+                b.vel.copy(dir).multiplyScalar(w.base.speed);
+
+                this.dummy.position.copy(origin);
+                this.dummy.scale.set(1,1,1);
+                this.dummy.updateMatrix();
+                this.projMesh.setMatrixAt(idx, this.dummy.matrix);
+                this.projMesh.instanceMatrix.needsUpdate = true;
+            }
+
+            spawnSingularity(pos, range) {
+                const idx = this.singularities.findIndex(s => !s.active);
+                if(idx === -1) return;
+                const s = this.singularities[idx];
+                s.active = true; s.pos.copy(pos); s.life = 0; s.maxLife = 1.5; s.range = range;
+                
+                // Initial Scale
+                this.dummy.position.copy(pos);
+                this.dummy.scale.set(0.1, 0.1, 0.1);
+                this.dummy.updateMatrix();
+                this.holeMesh.setMatrixAt(idx, this.dummy.matrix);
+                this.holeMesh.instanceMatrix.needsUpdate = true;
+            }
+
+            update(dt) {
+                let dirtyProj = false;
+                let dirtyHole = false;
+                const ray = new THREE.Raycaster();
+
+                // 1. Update Projectiles
+                for(let i=0; i<20; i++) {
+                    const b = this.bullets[i];
+                    if(!b.active) continue;
+
+                    this.projMesh.getMatrixAt(i, this.dummy.matrix);
+                    const pos = new THREE.Vector3().setFromMatrixPosition(this.dummy.matrix);
+                    const step = b.vel.clone().multiplyScalar(dt);
+                    const nextPos = pos.clone().add(step);
+
+                    ray.set(pos, step.clone().normalize());
+                    ray.far = step.length();
+                    const hits = ray.intersectObjects([...walls, floorMesh, ...targets]);
+
+                    if(hits.length > 0) {
+                        // Impact!
+                        this.spawnSingularity(hits[0].point, b.props.explode);
+                        b.active = false;
+                        this.dummy.scale.set(0,0,0);
+                        this.dummy.updateMatrix();
+                        this.projMesh.setMatrixAt(i, this.dummy.matrix);
+                    } else {
+                        this.dummy.position.copy(nextPos);
+                        this.dummy.scale.set(1,1,1);
+                        this.dummy.updateMatrix();
+                        this.projMesh.setMatrixAt(i, this.dummy.matrix);
+                    }
+                    dirtyProj = true;
+                }
+
+                // 2. Update Singularities
+                for(let i=0; i<10; i++) {
+                    const s = this.singularities[i];
+                    if(!s.active) continue;
+
+                    s.life += dt;
+                    
+                    // Suck Particles In
+                    if(Math.random() > 0.5) {
+                        // Emit particles at range, flying towards center
+                        const offset = new THREE.Vector3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).normalize().multiplyScalar(s.range * 0.5);
+                        const spawnPos = s.pos.clone().add(offset);
+                        this.sparkSys.emitImplosion(spawnPos, s.pos, 0xaa00aa);
+                    }
+
+                    // Physics Pull
+                    targets.forEach(t => {
+                        const dist = t.position.distanceTo(s.pos);
+                        if(dist < s.range) {
+                            const forceDir = new THREE.Vector3().subVectors(s.pos, t.position).normalize();
+                            t.userData.velocity.add(forceDir.multiplyScalar(100 * dt)); // Strong pull
+                        }
+                    });
+
+                    // Visual Scale (Grow fast, hold, shrink fast)
+                    let scale = 0;
+                    if(s.life < 0.2) scale = (s.life / 0.2) * 3.0; // Grow to size 3
+                    else if(s.life < 1.3) scale = 3.0 + Math.sin(s.life * 10)*0.1; // Wobble
+                    else scale = (1.0 - (s.life - 1.3)/0.2) * 3.0; // Shrink
+
+                    if(s.life >= s.maxLife) {
+                        s.active = false;
+                        scale = 0;
+                    }
+
+                    this.dummy.position.copy(s.pos);
+                    this.dummy.scale.set(scale, scale, scale);
+                    this.dummy.updateMatrix();
+                    this.holeMesh.setMatrixAt(i, this.dummy.matrix);
+                    dirtyHole = true;
+                }
+
+                if(dirtyProj) this.projMesh.instanceMatrix.needsUpdate = true;
+                if(dirtyHole) this.holeMesh.instanceMatrix.needsUpdate = true;
+            }
+        }
+
+        // 2. EXPLOSION SYSTEM (Standard Blast)
+        class ExplosionSystem {
+            constructor(scene) {
+                this.maxCount = 50;
+                const geo = new THREE.RingGeometry(0.5, 1.0, 32);
+                geo.rotateX(-Math.PI/2);
+                const mat = new THREE.ShaderMaterial({
+                    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+                    uniforms: { uTime: { value: 0 } },
+                    vertexShader: `varying vec2 vUv; varying vec3 vColor; void main() { vUv = uv; vColor = instanceColor; gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0); }`,
+                    fragmentShader: `varying vec2 vUv; varying vec3 vColor; void main() { float d = distance(vUv, vec2(0.5)); float alpha = smoothstep(0.5, 0.2, d); gl_FragColor = vec4(vColor * 2.0, alpha); }`
+                });
+                this.mesh = new THREE.InstancedMesh(geo, mat, this.maxCount);
+                this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+                this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(this.maxCount * 3), 3);
+                scene.add(this.mesh);
+                this.explosions = [];
+                this.dummy = new THREE.Object3D();
+                for(let i=0; i<this.maxCount; i++) {
+                    this.explosions.push({ active: false, life: 0, maxLife: 0.4, size: 0 });
+                    this.dummy.scale.set(0,0,0);
+                    this.dummy.updateMatrix();
+                    this.mesh.setMatrixAt(i, this.dummy.matrix);
+                }
+            }
+            trigger(pos, radius, colorHex) {
+                const idx = this.explosions.findIndex(e => !e.active);
+                if(idx === -1) return;
+                const ex = this.explosions[idx];
+                ex.active = true; ex.life = 0; ex.maxLife = 0.3; ex.size = radius; // Faster pop
+                this.dummy.position.copy(pos); this.dummy.position.y = 0.2; this.dummy.scale.set(0.1, 0.1, 0.1); this.dummy.updateMatrix();
+                this.mesh.setMatrixAt(idx, this.dummy.matrix);
+                this.mesh.setColorAt(idx, new THREE.Color(colorHex));
+                this.mesh.instanceMatrix.needsUpdate = true;
+                this.mesh.instanceColor.needsUpdate = true;
+                if(radius > 4) {
+                    const shake = radius * 0.01; // Reduced shake
+                    camera.position.x += (Math.random()-0.5) * shake; camera.position.y += (Math.random()-0.5) * shake;
+                }
+            }
+            update(dt) {
+                let dirty = false;
+                for(let i=0; i<this.maxCount; i++) {
+                    const ex = this.explosions[i];
+                    if(ex.active) {
+                        ex.life += dt;
+                        const progress = ex.life / ex.maxLife;
+                        if(progress >= 1) { ex.active = false; this.dummy.scale.set(0,0,0); this.dummy.updateMatrix(); this.mesh.setMatrixAt(i, this.dummy.matrix); dirty = true; } 
+                        else {
+                            this.mesh.getMatrixAt(i, this.dummy.matrix);
+                            const currentScale = (progress * ex.size) + 1.0; 
+                            const pos = new THREE.Vector3().setFromMatrixPosition(this.dummy.matrix);
+                            this.dummy.position.copy(pos);
+                            this.dummy.scale.set(currentScale, currentScale, currentScale);
+                            this.dummy.updateMatrix();
+                            this.mesh.setMatrixAt(i, this.dummy.matrix);
+                            dirty = true;
+                        }
+                    }
+                }
+                if(dirty) this.mesh.instanceMatrix.needsUpdate = true;
+            }
+        }
+
+        // 3. SMOKE SYSTEM
+        class SmokeSystem {
+            constructor(scene, maxCount = 500) {
+                this.maxCount = maxCount;
+                const geo = new THREE.DodecahedronGeometry(0.3);
+                const mat = new THREE.MeshStandardMaterial({ color: 0x333333, transparent: true, opacity: 0.6, roughness: 1.0 });
+                this.mesh = new THREE.InstancedMesh(geo, mat, maxCount);
+                this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+                scene.add(this.mesh);
+                this.particles = Array(maxCount).fill().map(() => ({ active: false, life: 0 }));
+                this.dummy = new THREE.Object3D();
+                for(let i=0; i<maxCount; i++) { this.dummy.scale.set(0,0,0); this.dummy.updateMatrix(); this.mesh.setMatrixAt(i, this.dummy.matrix); }
+            }
+            emit(pos, size=1.0) {
+                const idx = this.particles.findIndex(p => !p.active);
+                if(idx === -1) return;
+                const p = this.particles[idx];
+                p.active = true; p.life = 0.8; 
+                this.dummy.position.copy(pos);
+                this.dummy.rotation.set(Math.random()*3, Math.random()*3, Math.random()*3);
+                this.dummy.scale.set(size, size, size);
+                this.dummy.updateMatrix();
+                this.mesh.setMatrixAt(idx, this.dummy.matrix);
+                this.mesh.instanceMatrix.needsUpdate = true;
+            }
+            update(dt) {
+                let dirty = false;
+                for(let i=0; i<this.maxCount; i++) {
+                    const p = this.particles[i];
+                    if(p.active) {
+                        p.life -= dt;
+                        this.mesh.getMatrixAt(i, this.dummy.matrix);
+                        const s = Math.max(0, p.life); 
+                        this.dummy.scale.set(s, s, s);
+                        this.dummy.updateMatrix();
+                        this.mesh.setMatrixAt(i, this.dummy.matrix);
+                        dirty = true;
+                        if(p.life <= 0) { p.active = false; this.dummy.scale.set(0,0,0); this.dummy.updateMatrix(); this.mesh.setMatrixAt(i, this.dummy.matrix); }
+                    }
+                }
+                if(dirty) this.mesh.instanceMatrix.needsUpdate = true;
+            }
+        }
+
+        // 4. SPARK SYSTEM (Updated for Suction)
+        class SparkSystem {
+            constructor(scene, maxCount = 500) {
+                this.maxCount = maxCount;
+                const geo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+                const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                this.mesh = new THREE.InstancedMesh(geo, mat, maxCount);
+                this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+                this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(maxCount * 3), 3);
+                scene.add(this.mesh);
+                this.particles = Array(maxCount).fill().map(() => ({ active: false, life: 0, vel: new THREE.Vector3(), suction: false, target: null }));
+                this.dummy = new THREE.Object3D();
+            }
+            emit(pos, count, color, speed = 10) {
+                const col = new THREE.Color(color).multiplyScalar(2);
+                for(let k=0; k<count; k++) {
+                    const idx = this.particles.findIndex(p => !p.active);
+                    if(idx === -1) return;
+                    const p = this.particles[idx];
+                    p.active = true; p.life = 0.5 + Math.random()*0.5; p.suction = false;
+                    p.vel.set((Math.random()-0.5), (Math.random()-0.5) + 1, (Math.random()-0.5)).normalize().multiplyScalar(speed);
+                    this.dummy.position.copy(pos);
+                    this.dummy.scale.set(1,1,1);
+                    this.dummy.updateMatrix();
+                    this.mesh.setMatrixAt(idx, this.dummy.matrix);
+                    this.mesh.setColorAt(idx, col);
+                }
+                this.mesh.instanceMatrix.needsUpdate = true;
+                this.mesh.instanceColor.needsUpdate = true;
+            }
+            emitImplosion(pos, targetPos, color) {
+                const idx = this.particles.findIndex(p => !p.active);
+                if(idx === -1) return;
+                const p = this.particles[idx];
+                p.active = true; p.life = 1.0; p.suction = true; p.target = targetPos;
+                this.dummy.position.copy(pos);
+                this.dummy.scale.set(1,1,1);
+                this.dummy.updateMatrix();
+                this.mesh.setMatrixAt(idx, this.dummy.matrix);
+                this.mesh.setColorAt(idx, new THREE.Color(color).multiplyScalar(3));
+                this.mesh.instanceMatrix.needsUpdate = true;
+                this.mesh.instanceColor.needsUpdate = true;
+            }
+            update(dt) {
+                let dirty = false;
+                for(let i=0; i<this.maxCount; i++) {
+                    const p = this.particles[i];
+                    if(p.active) {
+                        p.life -= dt;
+                        this.mesh.getMatrixAt(i, this.dummy.matrix);
+                        const pos = new THREE.Vector3().setFromMatrixPosition(this.dummy.matrix);
+                        
+                        if(p.suction) {
+                            // Suction Logic
+                            const dir = new THREE.Vector3().subVectors(p.target, pos).normalize();
+                            pos.addScaledVector(dir, 15 * dt); // Fly to center
+                            if(pos.distanceTo(p.target) < 0.5) p.life = 0; // Die on impact
+                        } else {
+                            // Normal physics
+                            p.vel.y -= 20 * dt; 
+                            pos.addScaledVector(p.vel, dt);
+                            if(pos.y < 0) { p.vel.y *= -0.5; pos.y = 0; }
+                        }
+
+                        this.dummy.position.copy(pos);
+                        const s = Math.min(1, p.life * 2);
+                        this.dummy.scale.set(s,s,s);
+                        this.dummy.updateMatrix();
+                        this.mesh.setMatrixAt(i, this.dummy.matrix);
+                        dirty = true;
+                        if(p.life <= 0) { p.active = false; this.dummy.scale.set(0,0,0); this.dummy.updateMatrix(); this.mesh.setMatrixAt(i, this.dummy.matrix); }
+                    }
+                }
+                if(dirty) this.mesh.instanceMatrix.needsUpdate = true;
+            }
+        }
+
+        // 5. PROJECTILE SYSTEM (Standard)
+        class ProjectileSystem {
+            constructor(scene, explosionSys, smokeSys, sparkSys) {
+                this.explosionSys = explosionSys;
+                this.smokeSys = smokeSys;
+                this.sparkSys = sparkSys;
+                this.bullets = Array(200).fill().map(() => ({ active: false, vel: new THREE.Vector3(), life: 0, props: {} }));
+                this.dummy = new THREE.Object3D();
+                const geo = new THREE.BoxGeometry(0.3, 0.3, 1.0);
+                const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
+                this.mesh = new THREE.InstancedMesh(geo, mat, 200);
+                this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+                this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(200*3), 3);
+                scene.add(this.mesh);
+            }
+            fire(origin, dir, w) {
+                const count = w.base.count || 1;
+                const spread = w.base.spread || 0;
+                const col = new THREE.Color(w.color);
+                for(let i=0; i<count; i++) {
+                    const idx = this.bullets.findIndex(b => !b.active);
+                    if(idx === -1) return;
+                    const b = this.bullets[idx];
+                    b.active = true; b.life = w.base.range / w.base.speed; b.props = w.base; b.color = w.color;
+                    const d = dir.clone();
+                    if(spread > 0) {
+                        d.x += (Math.random()-0.5) * spread; d.y += (Math.random()-0.5) * spread; d.z += (Math.random()-0.5) * spread; d.normalize();
+                    }
+                    b.vel.copy(d).multiplyScalar(w.base.speed);
+                    this.dummy.position.copy(origin);
+                    this.dummy.lookAt(origin.clone().add(d));
+                    if(w.id === 'w_13') this.dummy.scale.set(2, 2, 2); 
+                    else this.dummy.scale.set(0.5, 0.5, 0.5); 
+                    this.dummy.updateMatrix();
+                    this.mesh.setMatrixAt(idx, this.dummy.matrix);
+                    this.mesh.setColorAt(idx, col);
+                }
+                this.mesh.instanceMatrix.needsUpdate = true;
+                this.mesh.instanceColor.needsUpdate = true;
+            }
+            update(dt) {
+                let dirty = false;
+                const ray = new THREE.Raycaster();
+                for(let i=0; i<200; i++) {
+                    const b = this.bullets[i];
+                    if(!b.active) continue;
+                    this.mesh.getMatrixAt(i, this.dummy.matrix);
+                    const pos = new THREE.Vector3().setFromMatrixPosition(this.dummy.matrix);
+                    if(b.props.trail && Math.random() > 0.5) this.smokeSys.emit(pos, 0.8);
+                    const step = b.vel.clone().multiplyScalar(dt);
+                    const nextPos = pos.clone().add(step);
+                    ray.set(pos, step.clone().normalize());
+                    ray.far = step.length();
+                    const hits = ray.intersectObjects([...targets, floorMesh, ...walls]);
+                    if(hits.length > 0 || b.life <= 0) {
+                        const hitPos = hits.length > 0 ? hits[0].point : nextPos;
+                        if(b.props.explode) {
+                            this.explosionSys.trigger(hitPos, b.props.explode, b.color);
+                            this.sparkSys.emit(hitPos, 10, b.color);
+                            targets.forEach(t => {
+                                const d = t.position.distanceTo(hitPos);
+                                if(d < b.props.explode) {
+                                    const forceDir = new THREE.Vector3().subVectors(t.position, hitPos).normalize();
+                                    t.userData.velocity.add(forceDir.multiplyScalar(50 * dt / d)); 
+                                    t.material.emissive.setHex(b.color);
+                                    setTimeout(() => t.material.emissive.setHex(0x000000), 100);
+                                }
+                            });
+                        }
+                        b.active = false; this.dummy.scale.set(0,0,0);
+                    } else {
+                        this.dummy.position.copy(nextPos);
+                        this.dummy.lookAt(nextPos.clone().add(b.vel));
+                    }
+                    b.life -= dt;
+                    this.dummy.updateMatrix();
+                    this.mesh.setMatrixAt(i, this.dummy.matrix);
+                    dirty = true;
+                }
+                if(dirty) this.mesh.instanceMatrix.needsUpdate = true;
+            }
+        }
+
+        // 6. MINE SYSTEM
+        class MineSystem {
+            constructor(scene, explosionSys) {
+                this.scene = scene;
+                this.explosionSys = explosionSys;
+                this.mines = [];
+                const geo = new THREE.CylinderGeometry(0.8, 0.8, 0.2, 16);
+                const mat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+                this.mesh = new THREE.InstancedMesh(geo, mat, 50);
+                this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+                this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(50*3), 3);
+                scene.add(this.mesh);
+                this.dummy = new THREE.Object3D();
+                for(let i=0; i<50; i++) { this.dummy.scale.set(0,0,0); this.dummy.updateMatrix(); this.mesh.setMatrixAt(i, this.dummy.matrix); this.mines.push({ active: false, pos: new THREE.Vector3() }); }
+            }
+            fire(origin, dir, w) {
+                const idx = this.mines.findIndex(m => !m.active);
+                if(idx === -1) return;
+                const m = this.mines[idx];
+                m.active = true; m.props = w.base; m.color = w.color;
+                m.pos.copy(origin).sub(dir.multiplyScalar(2)); 
+                m.pos.y = 0.1; 
+                this.dummy.position.copy(m.pos);
+                this.dummy.scale.set(1,1,1);
+                this.dummy.updateMatrix();
+                this.mesh.setMatrixAt(idx, this.dummy.matrix);
+                this.mesh.setColorAt(idx, new THREE.Color(w.color));
+                this.mesh.instanceMatrix.needsUpdate = true;
+                this.mesh.instanceColor.needsUpdate = true;
+            }
+            update(dt) {
+                let dirty = false;
+                for(let i=0; i<50; i++) {
+                    const m = this.mines[i];
+                    if(!m.active) continue;
+                    let triggered = false;
+                    for(const t of targets) { if(t.position.distanceTo(m.pos) < 3.0) { triggered = true; break; } }
+                    if(triggered) {
+                        this.explosionSys.trigger(m.pos, m.props.explode, m.color);
+                        targets.forEach(t => {
+                            const d = t.position.distanceTo(m.pos);
+                            if(d < m.props.explode) {
+                                const dir = new THREE.Vector3().subVectors(t.position, m.pos).normalize();
+                                t.userData.velocity.add(dir.multiplyScalar(80 * dt));
+                            }
+                        });
+                        m.active = false; this.dummy.scale.set(0,0,0); this.dummy.updateMatrix(); this.mesh.setMatrixAt(i, this.dummy.matrix); dirty = true;
+                    }
+                }
+                if(dirty) this.mesh.instanceMatrix.needsUpdate = true;
+            }
+        }
+
+        const explosionSys = new ExplosionSystem(scene);
+        const smokeSys = new SmokeSystem(scene);
+        const sparkSys = new SparkSystem(scene);
+        const gravSys = new GravSystem(scene, sparkSys);
+        const projSys = new ProjectileSystem(scene, explosionSys, smokeSys, sparkSys);
+        const mineSys = new MineSystem(scene, explosionSys);
+
+        const uiContainer = document.getElementById('ui');
+        WEAPONS.forEach((w, index) => {
+            const btn = document.createElement('div');
+            btn.className = `weapon-card ${index === 0 ? 'active' : ''}`;
+            btn.innerHTML = `<span class="icon">${w.icon}</span><span class="name">${w.name}</span><div class="stats">${w.desc}</div>`;
+            btn.onclick = () => {
+                currentWeaponIndex = index;
+                document.querySelectorAll('.weapon-card').forEach(c => c.classList.remove('active'));
+                btn.classList.add('active');
+            };
+            uiContainer.appendChild(btn);
+        });
+
+        const mouse = new THREE.Vector2();
+        const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+        const raycaster = new THREE.Raycaster();
+        
+        window.addEventListener('mousemove', e => {
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        });
+        window.addEventListener('mousedown', () => isMouseDown = true);
+        window.addEventListener('mouseup', () => isMouseDown = false);
+        window.addEventListener('keydown', e => {
+            const k = parseInt(e.key);
+            if(k >= 1 && k <= WEAPONS.length) {
+                currentWeaponIndex = k-1;
+                document.querySelectorAll('.weapon-card').forEach((c,i) => c.classList.toggle('active', i===k-1));
+            }
+        });
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight); composer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        const clock = new THREE.Clock();
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = clock.getDelta();
+            const time = clock.getElapsedTime();
+
+            targets.forEach(t => {
+                t.position.add(t.userData.velocity.clone().multiplyScalar(dt));
+                t.userData.velocity.multiplyScalar(0.92); 
+                if(t.position.x > 50) t.position.x = -50;
+                if(t.position.x < -50) t.position.x = 50;
+                if(t.position.z > 50) t.position.z = -50;
+                if(t.position.z < -50) t.position.z = 50;
+            });
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersect = new THREE.Vector3();
+            raycaster.ray.intersectPlane(plane, intersect);
+            if(intersect) {
+                const lookPos = intersect.clone(); lookPos.y = 1.5;
+                gunMesh.lookAt(lookPos);
+            }
+
+            const w = WEAPONS[currentWeaponIndex];
+            const muzzlePos = new THREE.Vector3();
+            gunMesh.localToWorld(muzzlePos.copy(muzzleOffset));
+            const dir = new THREE.Vector3().subVectors(intersect || new THREE.Vector3(0,0,10), muzzlePos).normalize();
+
+            if(isMouseDown && time - lastFireTime >= w.base.cd) {
+                lastFireTime = time;
+                
+                // ROUTER
+                if(w.type === "Projectile") projSys.fire(muzzlePos, dir, w);
+                else if(w.type === "Grav") gravSys.fire(muzzlePos, dir, w);
+                else if(w.type === "Mine") mineSys.fire(muzzlePos, dir, w);
+
+                gunMesh.position.z += 0.3;
+                const light = new THREE.PointLight(w.color, 5, 10);
+                light.position.copy(muzzlePos);
+                scene.add(light);
+                setTimeout(() => scene.remove(light), 50);
+            }
+            
+            gunMesh.position.z = THREE.MathUtils.lerp(gunMesh.position.z, 0, dt*5);
+
+            explosionSys.update(dt);
+            gravSys.update(dt);
+            projSys.update(dt);
+            mineSys.update(dt);
+            smokeSys.update(dt);
+            sparkSys.update(dt);
+
+            composer.render();
+        }
+        animate();
+    </script>
+</body>
+</html>

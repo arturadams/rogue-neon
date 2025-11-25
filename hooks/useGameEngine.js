@@ -29,7 +29,8 @@ export function useGameEngine({
   createNeonMesh,
   removeEnemy,
   removeProjectile,
-  helpers
+  helpers,
+  weaponFX // <-- Add WeaponFX instance
 }) {
   const {
     updateHUD,
@@ -372,6 +373,12 @@ export function useGameEngine({
     }
   }
 
+  function triggerWeaponFX(weapon, origin, direction, target) {
+    if (weaponFX && typeof weaponFX.trigger === 'function') {
+      weaponFX.trigger(weapon, origin, direction, target);
+    }
+  }
+
   function gameTick() {
     state.frame++;
     const dt = 1 / 60;
@@ -421,6 +428,10 @@ export function useGameEngine({
       else if (castSpell(spell)) spell.cdTimer = spell.data.base.cd * player.cdMult;
     });
 
+    if (weaponFX && typeof weaponFX.update === 'function') {
+      weaponFX.update(dt);
+    }
+
     updateEntities();
   }
 
@@ -433,5 +444,5 @@ export function useGameEngine({
     composer.render();
   }
 
-  return { animate, gameTick, updateAimGuide };
+  return { animate, gameTick, updateAimGuide, triggerWeaponFX };
 }
