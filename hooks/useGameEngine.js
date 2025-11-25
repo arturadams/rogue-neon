@@ -10,6 +10,10 @@ export function createEngineState(initial = {}) {
   };
 }
 
+// Reusable Vector3s to avoid GC
+const _tempVec = new THREE.Vector3();
+const _diffVec = new THREE.Vector3();
+
 export function useGameEngine({
   state,
   config,
@@ -30,7 +34,7 @@ export function useGameEngine({
   removeEnemy,
   removeProjectile,
   helpers,
-  weaponFX // <-- Add WeaponFX instance
+  weaponFX 
 }) {
   const {
     updateHUD,
@@ -55,12 +59,17 @@ export function useGameEngine({
   } = helpers;
 
   function updateAimGuide() {
+    if (state.gameState !== 'PLAYING') return;
+    
     cursorMesh.position.x = cursorWorldPos.x;
     cursorMesh.position.z = cursorWorldPos.z;
     cursorMesh.rotation.z += 0.05;
-    aimLinePool.forEach(l => (l.visible = false));
+    
+    // Hide all first
+    for(let i=0; i<aimLinePool.length; i++) aimLinePool[i].visible = false;
+
     let poolIdx = 0;
-    const start = charGroup.position.clone().add(new THREE.Vector3(0, 3, 0));
+    const start = charGroup.position.clone().add(_tempVec.set(0, 3, 0)); // Use temp check
 
     player.activeSpells.forEach(s => {
       const cfg = s.data.base;
@@ -71,9 +80,12 @@ export function useGameEngine({
       const range = (cfg.range || 50) * player.rangeMult;
       for (let i = 0; i < shots; i++) {
         if (poolIdx >= aimLinePool.length) break;
-        const dir = new THREE.Vector3().subVectors(cursorWorldPos, charGroup.position).normalize();
-        if (i > 0) dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), (i % 2 === 0 ? 1 : -1) * 0.1 * Math.ceil(i / 2));
-        const end = start.clone().add(dir.multiplyScalar(range));
+        _diffVec.subVectors(cursorWorldPos, charGroup.position).normalize();
+        
+        // Spread logic reuse
+        if (i > 0) _diffVec.applyAxisAngle(new THREE.Vector3(0, 1, 0), (i % 2 === 0 ? 1 : -1) * 0.1 * Math.ceil(i / 2));
+        
+        const end = start.clone().add(_diffVec.multiplyScalar(range));
         const pts = [start, end];
         aimLinePool[poolIdx].geometry.setFromPoints(pts);
         aimLinePool[poolIdx].material.color.setHex(s.data.color);
@@ -84,18 +96,32 @@ export function useGameEngine({
   }
 
   function updatePickups() {
+    // Process backwards to allow safe splicing
     for (let i = entities.orbs.length - 1; i >= 0; i--) {
       const orb = entities.orbs[i];
       const d = charGroup.position.distanceTo(orb.mesh.position);
       const isMagnet = d < player.magnetRadius;
-      orb.mesh.position.lerp(charGroup.position, isMagnet ? 0.2 : 0.015);
-      if (d < 2) {
+      
+      // FIX: Always drift slightly towards player if reasonably close, 
+      // but pull hard if within magnet range.
+      if (isMagnet) {
+          // Strong pull
+          orb.mesh.position.lerp(charGroup.position, 0.2);
+      } else if (d < 60) { // Visible range drift
+          // Gentle drift
+          orb.mesh.position.lerp(charGroup.position, 0.02); // Increased form 0.015
+      }
+      
+      if (d < 3) { // Increased pickup radius slightly (2 -> 3)
         if (orb.type === 'xp') gainXp(orb.val);
         else player.gold += orb.val;
         updateHUD();
         scene.remove(orb.mesh);
         entities.orbs.splice(i, 1);
-      } else if (!isMagnet) orb.mesh.position.y = 1 + Math.sin(state.frame * 0.1 + i) * 0.5;
+      } else if (!isMagnet && d < 60) {
+          // Only animate bobbing if visible-ish and not being sucked in
+          orb.mesh.position.y = 1 + Math.sin(state.frame * 0.1 + i) * 0.5;
+      }
     }
 
     for (let i = entities.drops.length - 1; i >= 0; i--) {
@@ -122,6 +148,9 @@ export function useGameEngine({
   }
 
   function spawnEnemy() {
+    // Hard cap enemies to prevent freeze
+    if(entities.enemies.length > 100) return; 
+
     const isBossWave = state.wave % 5 === 0;
     let hp = 8 + state.wave * 3 * player.curse;
     let speed = 0.15 + state.wave * 0.01;
@@ -157,6 +186,8 @@ export function useGameEngine({
       color = config.colors.mythic;
     }
 
+    // Optimize: Reusing geometry constants from a global pool would be better, 
+    // but for now createNeonMesh uses shared materials which is the heavy part.
     const geo = type === 'tank' ? new THREE.BoxGeometry(1, 1, 1) : new THREE.OctahedronGeometry(1);
     const mesh = createNeonMesh(geo, color);
     mesh.scale.set(scale, scale, scale);
@@ -177,6 +208,7 @@ export function useGameEngine({
   }
 
   function updateEntities() {
+    // Update Enemies
     for (let i = entities.enemies.length - 1; i >= 0; i--) {
       const e = entities.enemies[i];
       e.speedMod = 1;
@@ -201,6 +233,7 @@ export function useGameEngine({
       }
     }
 
+    // Update Projectiles
     for (let i = entities.projectiles.length - 1; i >= 0; i--) {
       const p = entities.projectiles[i];
       p.age++;
@@ -222,11 +255,12 @@ export function useGameEngine({
         }
       }
 
+      // Homing Logic
       if (p.type === 'homing') {
         if (!p.target || !p.target.alive) p.target = getClosestEnemy(p.mesh.position);
         if (p.target) {
-          const dir = new THREE.Vector3().subVectors(p.target.mesh.position, p.mesh.position).normalize();
-          p.velocity.lerp(dir.multiplyScalar(p.speed), 0.15);
+          _diffVec.subVectors(p.target.mesh.position, p.mesh.position).normalize();
+          p.velocity.lerp(_diffVec.multiplyScalar(p.speed), 0.15);
         }
       } else if (p.type === 'zone') {
         if (p.age % p.interval === 0) {
@@ -234,11 +268,11 @@ export function useGameEngine({
             if (p.mesh.position.distanceTo(e.mesh.position) < p.radius + e.radius) {
               if (p.zoneType === 'void') {
                 damageEnemy(e, p.damage);
-                if (p.spellRef && p.spellRef.id.includes('event')) e.mesh.position.lerp(p.mesh.position, 0.2);
+                if (p.spellRef && p.spellRef.id && p.spellRef.id.includes('event')) e.mesh.position.lerp(p.mesh.position, 0.2);
                 else e.mesh.position.lerp(p.mesh.position, 0.05);
               } else if (p.zoneType === 'time') {
                 e.speedMod = p.spellRef.data.slow || 0.4;
-                if (p.spellRef && p.spellRef.id.includes('burn')) damageEnemy(e, 2);
+                if (p.spellRef && p.spellRef.id && p.spellRef.id.includes('burn')) damageEnemy(e, 2);
               }
             }
           }
@@ -281,13 +315,14 @@ export function useGameEngine({
           p.mesh.material.opacity = 1 - p.age / 10;
 
           for (const e of entities.enemies) {
-            const toEnemy = e.mesh.position.clone().sub(charGroup.position);
-            const dist = toEnemy.length();
+            // Reusing temp vec to calculate distance
+            _diffVec.subVectors(e.mesh.position, charGroup.position);
+            const dist = _diffVec.length();
             if (dist < p.range) {
-              const angle = p.velocity.clone().normalize().angleTo(toEnemy.normalize());
+              const angle = p.velocity.clone().normalize().angleTo(_diffVec.normalize());
               if (angle < 0.6) {
                 damageEnemy(e, p.damage);
-                e.mesh.position.add(toEnemy.normalize().multiplyScalar(2));
+                e.mesh.position.add(_diffVec.normalize().multiplyScalar(2));
               }
             }
           }
@@ -298,56 +333,36 @@ export function useGameEngine({
 
       let hit = false;
       for (const e of entities.enemies) {
-        if (p.type === 'chain') {
-          continue;
-        } else if (p.type === 'drone') {
-          if (p.target && p.target.alive) {
-            const dir = new THREE.Vector3().subVectors(p.target.mesh.position, p.mesh.position).normalize();
-            p.mesh.position.add(dir.multiplyScalar(0.2));
-            if (p.mesh.position.distanceTo(p.target.mesh.position) < 2) {
-              damageEnemy(p.target, p.damage);
-              createExplosion(p.mesh.position, p.spellRef.data.color, 2);
-              p.target = null;
-            }
-          } else {
-            const t = getClosestEnemy(p.mesh.position, 80);
-            if (t) p.target = t;
-          }
-          continue;
-        }
-
+        if (p.type === 'chain') continue;
+        
         const dist = p.mesh.position.distanceTo(e.mesh.position);
         if (dist < 1.2 + e.radius) {
           if (p.type === 'beam') {
             damageEnemy(e, p.damage);
-          } else if (p.type === 'zone') {
-            if (p.zoneType === 'blizzard') damageEnemy(e, p.damage * 0.02);
-          } else if (p.type === 'wave') {
-            if (!p.hitList.includes(e)) {
-              damageEnemy(e, p.damage);
-              e.mesh.position.z -= p.push;
-              p.hitList.push(e);
-            }
           } else {
             damageEnemy(e, p.damage);
             if (p.legendaryExplode) createExplosion(e.mesh.position, 0xffaa00, 10);
             createExplosion(p.mesh.position, p.color, 3);
 
             if (p.tags && p.tags.includes('split')) {
-              fireProj({ ...p.spellRef.data, speed: p.speed, range: 50, damage: p.damage * 0.5, type: 'projectile' }, p.mesh.position, p.velocity.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), 0.5).normalize(), p.damage * 0.5);
-              fireProj({ ...p.spellRef.data, speed: p.speed, range: 50, damage: p.damage * 0.5, type: 'projectile' }, p.mesh.position, p.velocity.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -0.5).normalize(), p.damage * 0.5);
+              const splitVel1 = p.velocity.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), 0.5).normalize();
+              const splitVel2 = p.velocity.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -0.5).normalize();
+              
+              fireProj({ ...p.spellRef.data, speed: p.speed, range: 50, damage: p.damage * 0.5, type: 'projectile' }, p.mesh.position, splitVel1, p.damage * 0.5);
+              fireProj({ ...p.spellRef.data, speed: p.speed, range: 50, damage: p.damage * 0.5, type: 'projectile' }, p.mesh.position, splitVel2, p.damage * 0.5);
             }
 
-            if (p.spellRef && p.spellRef.id.includes('neon_bolt') && player.items.includes('item_mirror_chip') && !p.ricocheted) {
+            if (p.spellRef && p.spellRef.id && p.spellRef.id.includes('neon_bolt') && player.items.includes('item_mirror_chip') && !p.ricocheted) {
               const next = getClosestEnemyExcluding(p.mesh.position, 50, [e]);
               if (next) {
-                p.velocity = new THREE.Vector3().subVectors(next.mesh.position, p.mesh.position).normalize().multiplyScalar(p.speed);
+                _diffVec.subVectors(next.mesh.position, p.mesh.position).normalize().multiplyScalar(p.speed);
+                p.velocity.copy(_diffVec);
                 p.ricocheted = true;
                 continue;
               }
             }
 
-            if (p.spellRef && p.spellRef.data.base.puddle) {
+            if (p.spellRef && p.spellRef.data && p.spellRef.data.base.puddle) {
               spawnZone(p.mesh.position, p.spellRef.data.base, p.spellRef);
             }
 
@@ -361,6 +376,7 @@ export function useGameEngine({
       if (hit) removeProjectile(i);
     }
 
+    // Particle Update - Remove if life < 0
     for (let i = entities.particles.length - 1; i >= 0; i--) {
       const p = entities.particles[i];
       p.mesh.position.add(p.vel);

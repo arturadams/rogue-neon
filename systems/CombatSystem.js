@@ -163,7 +163,8 @@ export class CombatSystem {
                         const shotDir = new THREE.Vector3().subVectors(cursorWorldPos, this.world.charGroup.position).normalize();
                         if(i > 0) shotDir.applyAxisAngle(new THREE.Vector3(0,1,0), (i % 2 === 0 ? 1 : -1) * 0.1 * Math.ceil(i/2));
                         
-                        this.fireProj(cfg, this.world.charGroup.position.clone().add(new THREE.Vector3(0,3,0)), shotDir, dmg, s.color);
+                        // Updated: Pass 'spell' as the last argument
+                        this.fireProj(cfg, this.world.charGroup.position.clone().add(new THREE.Vector3(0,3,0)), shotDir, dmg, s.color, spell);
                         this.weaponFX.trigger(spell.data, this.world.charGroup.position.clone().add(new THREE.Vector3(0,3,0)), shotDir);
     
                     }, i * (80/engineState.gameSpeed));
@@ -185,7 +186,8 @@ export class CombatSystem {
         });
     }
 
-    fireProj(cfg, pos, dir, dmg, color) {
+    // Updated: Accept spellObj argument
+    fireProj(cfg, pos, dir, dmg, color, spellObj = null) {
         let spd = cfg.speed * player.speedMult;
         let rng = (cfg.range || 200) * player.rangeMult;
     
@@ -198,7 +200,8 @@ export class CombatSystem {
             color: color, age: 0, type: cfg.homing ? 'homing' : 'projectile', 
             range: rng, width: 0.5, pierce: cfg.pierce, 
             explode: cfg.explode, pull: cfg.pull, particles: cfg.particles,
-            split: cfg.split, boomerang: cfg.boomerang, spellRef: { data: { base: cfg } } 
+            // Updated: Use passed spellObj or fallback
+            split: cfg.split, boomerang: cfg.boomerang, spellRef: spellObj || { data: { base: cfg } } 
         });
     }
 
