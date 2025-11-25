@@ -92,30 +92,55 @@ window.openDatabase = function() {
     document.getElementById('database-modal').style.display = 'block';
     
     const db = document.getElementById('db-content'); 
-    db.innerHTML = '';
     
-    // Restart Button with z-index safety
-    const restartBtn = document.createElement('div');
-    restartBtn.className = 'btn';
-    restartBtn.innerText = 'RESTART MISSION';
-    restartBtn.style.gridColumn = 'span 3';
-    restartBtn.style.textAlign = 'center';
-    restartBtn.style.marginBottom = '20px';
-    restartBtn.style.background = '#ff0055';
-    restartBtn.style.cursor = 'pointer'; 
-    restartBtn.style.position = 'relative'; // Ensure it stacks
-    restartBtn.style.zIndex = '1000'; // Ensure clickability
+    // 1. Generate static HTML content FIRST
+    let htmlContent = '';
+    WEAPONS.forEach(w => htmlContent += `<div class="db-item"><div class="db-name" style="color:#${new THREE.Color(w.color).getHexString()}">${w.icon} ${w.name}</div><div class="db-desc">${w.desc}</div></div>`);
+    PASSIVE_DB.forEach(p => htmlContent += `<div class="db-item"><div class="db-name">${p.icon} ${p.name}</div><div class="db-desc">${p.desc}</div></div>`);
+    ITEMS.forEach(i => htmlContent += `<div class="db-item"><div class="db-name">🎁 ${i.name}</div><div class="db-desc">${i.effect}</div></div>`);
     
-    restartBtn.onclick = function(e) {
-        e.preventDefault(); // Prevent accidental double firing
-        e.stopPropagation();
-        window.location.reload();
-    };
-    db.appendChild(restartBtn);
+    // 2. Set innerHTML (this is safe now as we haven't attached listeners yet)
+    db.innerHTML = htmlContent;
 
-    WEAPONS.forEach(w => db.innerHTML += `<div class="db-item"><div class="db-name" style="color:#${new THREE.Color(w.color).getHexString()}">${w.icon} ${w.name}</div><div class="db-desc">${w.desc}</div></div>`);
-    PASSIVE_DB.forEach(p => db.innerHTML += `<div class="db-item"><div class="db-name">${p.icon} ${p.name}</div><div class="db-desc">${p.desc}</div></div>`);
-    ITEMS.forEach(i => db.innerHTML += `<div class="db-item"><div class="db-name">🎁 ${i.name}</div><div class="db-desc">${i.effect}</div></div>`);
+    // 3. Create and Prepend the Restart Button (PRESERVING LISTENERS)
+    const restartBtn = document.createElement('div');
+    restartBtn.className = 'restart-btn'; 
+    restartBtn.title = "Hold to force restart";
+    restartBtn.style.pointerEvents = "auto"; 
+    restartBtn.innerHTML = `
+        <span class="restart-label">HOLD TO REBOOT SYSTEM</span>
+        <div class="restart-progress-bar"></div>
+    `;
+    
+    // Logic
+    let holdTimer = null;
+    const HOLD_TIME = 1500;
+
+    const resetHold = () => {
+        if (holdTimer) {
+            clearTimeout(holdTimer);
+            holdTimer = null;
+        }
+        restartBtn.classList.remove('holding');
+    };
+
+    restartBtn.addEventListener('mousedown', (e) => {
+        if(e.button !== 0) return; 
+        restartBtn.classList.add('holding');
+
+        holdTimer = setTimeout(() => {
+            restartBtn.classList.add('success');
+            restartBtn.querySelector('.restart-label').innerText = "SYSTEM PURGE...";
+            // Force reload
+            setTimeout(() => window.location.reload(), 100);
+        }, HOLD_TIME);
+    });
+
+    restartBtn.addEventListener('mouseup', resetHold);
+    restartBtn.addEventListener('mouseleave', resetHold);
+    
+    // Insert at the very top
+    db.insertBefore(restartBtn, db.firstChild);
 };
 
 window.closeDatabase = function() {

@@ -55,7 +55,8 @@ export function useGameEngine({
     fireBeam,
     drawChainBolt,
     startChain,
-    startChainRecursive
+    startChainRecursive,
+    handleProjectileHit // NEW
   } = helpers;
 
   function updateAimGuide() {
@@ -102,32 +103,48 @@ export function useGameEngine({
       const d = charGroup.position.distanceTo(orb.mesh.position);
       const isMagnet = d < player.magnetRadius;
       
-      // FIX: Always drift slightly towards player if reasonably close, 
-      // but pull hard if within magnet range.
+      // MOVEMENT LOGIC
       if (isMagnet) {
-          // Strong pull
-          orb.mesh.position.lerp(charGroup.position, 0.2);
-      } else if (d < 60) { // Visible range drift
-          // Gentle drift
-          orb.mesh.position.lerp(charGroup.position, 0.02); // Increased form 0.015
+          // Strong magnetic pull
+          orb.mesh.position.lerp(charGroup.position, 0.25);
+      } else {
+          // Constant Drift: Move same direction as enemies (Z+)
+          // Enemy base speed is around 0.15 - 0.20
+          // XP moves slightly slower at 0.12, ensuring it feels like part of the world
+          orb.mesh.position.z += 0.12; 
+          
+          // Smoother Bobbing: Reduced amplitude to avoid "pulsing" look
+          // Using 'orb.mesh.id' instead of 'i' helps desynchronize the waves
+          orb.mesh.position.y = 1 + Math.sin(state.frame * 0.05 + orb.mesh.id) * 0.3;
       }
       
-      if (d < 3) { // Increased pickup radius slightly (2 -> 3)
+      if (d < 3) { 
         if (orb.type === 'xp') gainXp(orb.val);
         else player.gold += orb.val;
         updateHUD();
         scene.remove(orb.mesh);
         entities.orbs.splice(i, 1);
-      } else if (!isMagnet && d < 60) {
-          // Only animate bobbing if visible-ish and not being sucked in
-          orb.mesh.position.y = 1 + Math.sin(state.frame * 0.1 + i) * 0.5;
+      }
+      
+      // Cleanup if it drifts past the player too far
+      if (orb.mesh.position.z > config.endZone + 10) {
+          scene.remove(orb.mesh);
+          entities.orbs.splice(i, 1);
       }
     }
 
     for (let i = entities.drops.length - 1; i >= 0; i--) {
       const drop = entities.drops[i];
       const d = charGroup.position.distanceTo(drop.mesh.position);
-      drop.mesh.position.lerp(charGroup.position, d < player.magnetRadius ? 0.1 : 0.005);
+      
+      // Drops drift with world
+      if (d >= player.magnetRadius) {
+          drop.mesh.position.z += 0.12;
+          drop.mesh.position.y = 1.5 + Math.sin(state.frame * 0.05) * 0.2;
+      } else {
+          drop.mesh.position.lerp(charGroup.position, 0.15);
+      }
+
       if (d < 3) {
         if (drop.item.type === 'synergy') {
           const w = player.activeSpells.find(s => s.id === drop.item.weapon_id);
@@ -144,6 +161,11 @@ export function useGameEngine({
         entities.drops.splice(i, 1);
       }
       drop.mesh.rotation.y += 0.05;
+      
+      if (drop.mesh.position.z > config.endZone + 10) {
+          scene.remove(drop.mesh);
+          entities.drops.splice(i, 1);
+      }
     }
   }
 
@@ -186,8 +208,6 @@ export function useGameEngine({
       color = config.colors.mythic;
     }
 
-    // Optimize: Reusing geometry constants from a global pool would be better, 
-    // but for now createNeonMesh uses shared materials which is the heavy part.
     const geo = type === 'tank' ? new THREE.BoxGeometry(1, 1, 1) : new THREE.OctahedronGeometry(1);
     const mesh = createNeonMesh(geo, color);
     mesh.scale.set(scale, scale, scale);
@@ -242,12 +262,35 @@ export function useGameEngine({
       const isKinetic = !staticTypes.includes(p.type);
 
       if (isKinetic) {
-        if (p.age > p.range / p.speed) {
-          removeProjectile(i);
-          continue;
+        // Boomerang Logic
+        if (p.boomerang) {
+            const maxAge = p.range / p.speed;
+            if (p.age < maxAge * 0.4) {
+                // Fly Out
+                p.mesh.position.add(p.velocity);
+            } else if (p.age < maxAge * 0.5) {
+                // Stall
+                p.mesh.rotation.y += 0.5;
+            } else {
+                // Return
+                _diffVec.subVectors(charGroup.position, p.mesh.position).normalize();
+                p.mesh.position.add(_diffVec.multiplyScalar(p.speed * 1.5));
+                if (p.mesh.position.distanceTo(charGroup.position) < 2) {
+                    removeProjectile(i);
+                    continue;
+                }
+            }
+        } else {
+            // Standard Linear
+            if (p.age > p.range / p.speed) {
+                removeProjectile(i);
+                continue;
+            }
+            if (p.velocity) p.mesh.position.add(p.velocity);
         }
-        if (p.velocity) p.mesh.position.add(p.velocity);
-      } else if (p.type === 'zone' || p.type === 'void' || p.type === 'wall' || p.type === 'decoy') {
+      } 
+      // --- STATIC TYPES ---
+      else if (p.type === 'zone' || p.type === 'void' || p.type === 'wall' || p.type === 'decoy') {
         if (p.age > p.duration * 60) {
           if (p.spellRef && p.spellRef.id && p.spellRef.id.includes('collapse')) createExplosion(p.mesh.position, 0x8800ff, 10);
           removeProjectile(i);
@@ -321,8 +364,7 @@ export function useGameEngine({
             if (dist < p.range) {
               const angle = p.velocity.clone().normalize().angleTo(_diffVec.normalize());
               if (angle < 0.6) {
-                damageEnemy(e, p.damage);
-                e.mesh.position.add(_diffVec.normalize().multiplyScalar(2));
+                handleProjectileHit(p, e); // Centralized hit logic
               }
             }
           }
@@ -340,17 +382,9 @@ export function useGameEngine({
           if (p.type === 'beam') {
             damageEnemy(e, p.damage);
           } else {
-            damageEnemy(e, p.damage);
-            if (p.legendaryExplode) createExplosion(e.mesh.position, 0xffaa00, 10);
+            // Centralized Hit Logic
+            handleProjectileHit(p, e); 
             createExplosion(p.mesh.position, p.color, 3);
-
-            if (p.tags && p.tags.includes('split')) {
-              const splitVel1 = p.velocity.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), 0.5).normalize();
-              const splitVel2 = p.velocity.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -0.5).normalize();
-              
-              fireProj({ ...p.spellRef.data, speed: p.speed, range: 50, damage: p.damage * 0.5, type: 'projectile' }, p.mesh.position, splitVel1, p.damage * 0.5);
-              fireProj({ ...p.spellRef.data, speed: p.speed, range: 50, damage: p.damage * 0.5, type: 'projectile' }, p.mesh.position, splitVel2, p.damage * 0.5);
-            }
 
             if (p.spellRef && p.spellRef.id && p.spellRef.id.includes('neon_bolt') && player.items.includes('item_mirror_chip') && !p.ricocheted) {
               const next = getClosestEnemyExcluding(p.mesh.position, 50, [e]);

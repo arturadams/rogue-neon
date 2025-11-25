@@ -1,12 +1,31 @@
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap");
 
 /* Base */
 body {
   margin: 0;
   overflow: hidden;
   background-color: #050510;
-  font-family: 'Orbitron', sans-serif;
+  font-family: "Orbitron", sans-serif;
   user-select: none;
+}
+
+/* Custom Scrollbar - Neon Blue Theme */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #050510;
+  border-left: 1px solid #333;
+}
+::-webkit-scrollbar-thumb {
+  background: #00ffff;
+  border-radius: 4px; /* Added rounded corners */
+  border: 1px solid #000;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #fff;
+  box-shadow: 0 0 10px #00ffff;
 }
 
 canvas {
@@ -113,7 +132,7 @@ canvas {
   border: 1px solid #00ffff;
   color: #00ffff;
   padding: 5px 10px;
-  font-family: 'Orbitron';
+  font-family: "Orbitron";
   cursor: pointer;
   font-size: 12px;
 }
@@ -130,7 +149,7 @@ canvas {
   background: #111;
   border: 1px solid #00ffff;
   color: #00ffff;
-  font-family: 'Orbitron';
+  font-family: "Orbitron";
   cursor: pointer;
   font-size: 10px;
   padding: 5px 10px;
@@ -517,7 +536,7 @@ canvas {
   border: 1px solid #00ffff;
   color: #00ffff;
   padding: 10px 20px;
-  font-family: 'Orbitron';
+  font-family: "Orbitron";
   cursor: pointer;
   font-size: 14px;
   transition: 0.2s;
@@ -583,7 +602,7 @@ canvas {
   border: none;
   color: #000;
   font-weight: 900;
-  font-family: 'Orbitron';
+  font-family: "Orbitron";
   cursor: pointer;
   font-size: 18px;
   clip-path: polygon(10% 0, 100% 0, 100% 80%, 90% 100%, 0 100%, 0 20%);
@@ -610,7 +629,11 @@ canvas {
   left: 0;
   width: 100%;
   height: 100%;
-  background: linear-gradient(to bottom, transparent 50%, rgba(0, 0, 0, 0.2) 50%);
+  background: linear-gradient(
+    to bottom,
+    transparent 50%,
+    rgba(0, 0, 0, 0.2) 50%
+  );
   background-size: 100% 4px;
   pointer-events: none;
   z-index: 50;
@@ -746,4 +769,83 @@ canvas {
 
 #start-screen {
   display: flex;
+}
+
+/* RESTART BUTTON (Improved) */
+.restart-btn {
+  background: #1a0000;
+  border: 1px solid #ff0044;
+  color: #ff0044;
+  padding: 15px;
+  font-family: "Orbitron";
+  font-weight: 900;
+  text-align: center;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+  transition: all 0.2s;
+  margin-bottom: 20px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 5px rgba(255, 0, 68, 0.2);
+  grid-column: span 3;
+  pointer-events: auto; /* FORCE CLICKABLE */
+  z-index: 10;
+}
+
+.restart-btn:hover {
+  background: #330000;
+  box-shadow: 0 0 15px rgba(255, 0, 68, 0.5);
+  border-color: #ff3366;
+  color: #ff3366;
+}
+
+.restart-btn.holding {
+  border-color: #ffaa00;
+  color: #ffaa00;
+  background: #221100;
+}
+
+.restart-btn.success {
+  border-color: #00ff00 !important;
+  color: #000 !important;
+  background: #00ff00 !important;
+  box-shadow: 0 0 20px #00ff00 !important;
+}
+
+/* Child Elements - Pointer Events None is CRITICAL for click pass-through */
+.restart-btn > * {
+  pointer-events: none;
+}
+
+.restart-progress-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 0%;
+  background-color: #ffaa00; /* Warning orange while holding */
+  z-index: 1;
+  opacity: 0.5;
+  transition: width 1.5s linear; /* Matches JS timer */
+}
+
+/* When not holding, reset instantly or fast */
+.restart-btn:not(.holding) .restart-progress-bar {
+  transition: width 0.2s ease-out;
+  width: 0% !important;
+}
+
+/* When holding, grow to full */
+.restart-btn.holding .restart-progress-bar {
+  width: 100% !important;
+}
+
+.restart-label {
+  position: relative;
+  z-index: 2;
+  letter-spacing: 2px;
 }
